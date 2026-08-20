@@ -1,0 +1,9 @@
+"""API v1 router aggregator."""
+from fastapi import APIRouter
+
+from app.api.v1 import events, observations, sites
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(sites.router)
+api_router.include_router(events.router)
+api_router.include_router(observations.router)

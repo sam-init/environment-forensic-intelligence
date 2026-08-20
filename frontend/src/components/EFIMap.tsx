@@ -1,0 +1,254 @@
+import { useEffect, useRef, useState } from 'react';
+import maplibregl from 'maplibre-gl';
+import type { ForensicEvent } from '../types/api';
+import { getRiskColor, scoreToRiskLevel } from '../utils/format';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GeoJSONFeatureAny = maplibregl.SourceSpecification extends infer T ? any : any;
+
+interface EFIMapProps {
+
+  events?: ForensicEvent[];
+  selectedEventId?: string | null;
+  onEventSelect?: (event: ForensicEvent) => void;
+  center?: [number, number]; // [lng, lat]
+  zoom?: number;
+}
+
+// Karnataka center
+const DEFAULT_CENTER: [number, number] = [76.5, 14.5];
+const DEFAULT_ZOOM = 7;
+
+export function EFIMap({
+  events = [],
+  selectedEventId,
+  onEventSelect,
+  center = DEFAULT_CENTER,
+  zoom = DEFAULT_ZOOM,
+}: EFIMapProps) {
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [mapReady, setMapReady] = useState(false);
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors',
+            maxzoom: 19,
+          },
+        },
+        layers: [
+          {
+            id: 'osm-tiles',
+            type: 'raster',
+            source: 'osm',
+            paint: {
+              'raster-opacity': 0.4, // Subtle under dark UI
+              'raster-saturation': -0.8,
+              'raster-brightness-max': 0.3,
+            },
+          },
+        ],
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      },
+      center,
+      zoom,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
+
+    map.on('load', () => {
+      setMapReady(true);
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Add event markers when map is ready
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // Clear existing markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    // Add event polygons as GeoJSON layers
+    const sourceId = 'efi-events';
+    if (map.getSource(sourceId)) {
+      map.removeLayer('efi-events-fill');
+      map.removeLayer('efi-events-outline');
+      map.removeSource(sourceId);
+    }
+
+    const features = events
+      .filter((e) => e.geometry)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((e) => ({
+        type: 'Feature' as const,
+        properties: {
+          event_id: e.event_id,
+          risk_score: e.risk_score ?? 0,
+          risk_level: e.risk_level ?? scoreToRiskLevel(e.risk_score),
+          category: e.category,
+          selected: e.event_id === selectedEventId,
+        },
+        geometry: e.geometry as any,
+      })) as any[];
+
+    if (features.length > 0) {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+
+      map.addLayer({
+        id: 'efi-events-fill',
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'risk_level'],
+            'critical', 'rgba(255,59,48,0.25)',
+            'high', 'rgba(255,159,10,0.20)',
+            'moderate', 'rgba(255,214,10,0.15)',
+            'rgba(50,215,75,0.12)',
+          ],
+          'fill-opacity': ['case', ['get', 'selected'], 0.5, 0.3],
+        },
+      });
+
+      map.addLayer({
+        id: 'efi-events-outline',
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'risk_level'],
+            'critical', 'rgba(255,59,48,0.9)',
+            'high', 'rgba(255,159,10,0.9)',
+            'moderate', 'rgba(255,214,10,0.8)',
+            'rgba(50,215,75,0.8)',
+          ],
+          'line-width': ['case', ['get', 'selected'], 2.5, 1.5],
+        },
+      });
+
+      // Click handler
+      map.on('click', 'efi-events-fill', (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const eventId = feature.properties?.event_id as string;
+        const evt = events.find((ev) => ev.event_id === eventId);
+        if (evt) onEventSelect?.(evt);
+      });
+
+      map.on('mouseenter', 'efi-events-fill', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'efi-events-fill', () => {
+        map.getCanvas().style.cursor = '';
+      });
+    }
+
+    // Add dot markers for events without geometry or for visual clarity
+    events.forEach((event) => {
+      // Try to get centroid from geometry or skip
+      // For demo, add a simple dot marker at a fixed location derived from event_id
+      const level = event.risk_level ?? scoreToRiskLevel(event.risk_score);
+      const color = getRiskColor(level);
+
+      // Only add marker if we have geometry-derived coordinates
+      if (event.geometry?.coordinates) {
+        const coords = getFirstCoordinate(event.geometry);
+        if (coords) {
+          const el = document.createElement('div');
+          el.className = 'map-event-marker';
+          el.style.cssText = `
+            width: 10px; height: 10px; border-radius: 50%;
+            background: ${color}; border: 2px solid rgba(255,255,255,0.3);
+            cursor: pointer;
+            ${event.event_id === selectedEventId ? 'transform: scale(1.5);' : ''}
+          `;
+
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat(coords)
+            .addTo(map);
+
+          el.addEventListener('click', () => onEventSelect?.(event));
+          markersRef.current.push(marker);
+        }
+      }
+    });
+  }, [events, selectedEventId, mapReady]);
+
+  // Fly to selected event
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !selectedEventId) return;
+
+    const event = events.find((e) => e.event_id === selectedEventId);
+    if (!event?.geometry?.coordinates) return;
+
+    const coords = getFirstCoordinate(event.geometry);
+    if (coords) {
+      map.flyTo({ center: coords, zoom: 13, duration: 1200 });
+    }
+  }, [selectedEventId, mapReady]);
+
+  return (
+    <div
+      ref={mapContainer}
+      className="map-canvas"
+      style={{ width: '100%', height: '100%' }}
+    />
+  );
+}
+
+/** Extract the first [lng, lat] coordinate pair from a GeoJSON geometry. */
+function getFirstCoordinate(geometry: { type: string; coordinates: unknown }): [number, number] | null {
+  try {
+    const coords = geometry.coordinates as unknown[];
+    if (geometry.type === 'Point') {
+      return coords as [number, number];
+    }
+    if (geometry.type === 'Polygon') {
+      const ring = (coords[0] as number[][])[0];
+      const center = getCentroid(coords[0] as number[][]);
+      return center ?? [ring[0], ring[1]];
+    }
+    if (geometry.type === 'MultiPolygon') {
+      const poly = coords[0] as number[][][];
+      return getCentroid(poly[0]);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getCentroid(ring: number[][]): [number, number] | null {
+  if (!ring || ring.length === 0) return null;
+  const lon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+  const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+  return [lon, lat];
+}

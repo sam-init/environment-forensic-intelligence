@@ -1,0 +1,56 @@
+{
+  "_comment": "EFI Risk Engine — Weight Configuration v1.0.0",
+  "_disclaimer": "These weights are configurable. Adjust to reflect domain expertise. Do not treat scores as legally authoritative.",
+  "version": "1.0.0",
+  "thresholds": {
+    "low": { "min": 0, "max": 24 },
+    "moderate": { "min": 25, "max": 49 },
+    "high": { "min": 50, "max": 74 },
+    "critical": { "min": 75, "max": 100 }
+  },
+  "weights": {
+    "change_magnitude": {
+      "weight": 0.20,
+      "description": "How large is the detected change (area, index delta)",
+      "max_contribution": 20
+    },
+    "temporal_persistence": {
+      "weight": 0.20,
+      "description": "Change confirmed across multiple observations (not a one-off)",
+      "max_contribution": 20
+    },
+    "model_confidence": {
+      "weight": 0.15,
+      "description": "Confidence of the detection model output",
+      "max_contribution": 15
+    },
+    "sar_corroboration": {
+      "weight": 0.15,
+      "description": "SAR data independently corroborates the optical change",
+      "max_contribution": 15
+    },
+    "environmental_proximity": {
+      "weight": 0.15,
+      "description": "Proximity to river, protected area, or ecologically sensitive zone",
+      "max_contribution": 15
+    },
+    "regulatory_context": {
+      "weight": 0.15,
+      "description": "Outside available mining lease boundary (when data is available)",
+      "max_contribution": 15
+    }
+  },
+  "proximity_thresholds_m": {
+    "river_critical": 100,
+    "river_high": 500,
+    "river_moderate": 2000,
+    "protected_area_critical": 500,
+    "protected_area_high": 2000
+  },
+  "notes": [
+    "Risk score is NOT a legal determination.",
+    "All outputs require human verification.",
+    "Missing data reduces the applicable weight — it does not default to worst-case.",
+    "Regulatory data unavailability is explicitly surfaced in the UI."
+  ]
+}

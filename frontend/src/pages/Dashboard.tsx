@@ -16,7 +16,7 @@ export function DashboardPage() {
   const { data: status } = useQuery<SystemStatus>({
     queryKey: ['system-status'],
     queryFn: async () => {
-      const r = await api.get<SystemStatus>('/api/v1/system/status');
+      const r = await api.get<SystemStatus>('/system/status');
       return r.data;
     },
     refetchInterval: 30_000,
@@ -54,7 +54,7 @@ export function DashboardPage() {
   const { data: demoSeeded } = useQuery({
     queryKey: ['demo-seed'],
     queryFn: async () => {
-      await api.post('/api/v1/demo/seed');
+      await api.post('/demo/seed');
       return true;
     },
     enabled: isDemoMode && events.length === 0 && !isLoading && !isError,

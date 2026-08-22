@@ -214,8 +214,8 @@ class Observation(Base):
     raw_path: Mapped[str | None] = mapped_column(Text)
     processed_path: Mapped[str | None] = mapped_column(Text)
 
-    # Metadata (provider-native metadata stored as JSONB)
-    metadata: Mapped[dict | None] = mapped_column(JSONB)
+    # Provider-native metadata stored as JSONB
+    provider_metadata: Mapped[dict | None] = mapped_column(JSONB)
     preprocessing_version: Mapped[str | None] = mapped_column(String(50))
 
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -512,7 +512,7 @@ class DataSource(Base):
     ingestion_status: Mapped[str] = mapped_column(
         String(50), default="NOT_INGESTED"
     )  # NOT_INGESTED | INGESTED | PARTIAL | FAILED | LICENSE_REVIEW_REQUIRED
-    metadata: Mapped[dict | None] = mapped_column(JSONB)
+    source_metadata: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow

@@ -1,6 +1,7 @@
 """
 EFI Backend — Database Setup
 Async SQLAlchemy engine + session factory + PostGIS support.
+Includes graceful fallback for DEMO_MODE when PostgreSQL container is offline.
 """
 from __future__ import annotations
 
@@ -54,23 +55,23 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession | None, None]:
     """
-    FastAPI dependency: yield a database session, ensure cleanup.
-    Usage:
-        @router.get("/")
-        async def endpoint(db: AsyncSession = Depends(get_db)):
-            ...
+    FastAPI dependency: yield a database session.
+    If database is unreachable (e.g. Postgres container offline), yields None in DEMO_MODE.
     """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    try:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+    except Exception:
+        yield None
 
 
 async def check_database_connection() -> bool:

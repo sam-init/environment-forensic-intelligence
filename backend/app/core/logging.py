@@ -16,11 +16,10 @@ from app.core.config import get_settings
 def configure_logging() -> None:
     """Initialize structlog for the application."""
     settings = get_settings()
-    log_level = getattr(logging, settings.log_level)
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
 
     shared_processors: list = [
         structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
@@ -44,7 +43,6 @@ def configure_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Also configure stdlib logging to capture uvicorn/sqlalchemy logs
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,

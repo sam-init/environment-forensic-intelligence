@@ -8,7 +8,7 @@ export function Header() {
   const { data: status } = useQuery<SystemStatus>({
     queryKey: ['system-status'],
     queryFn: async () => {
-      const r = await api.get<SystemStatus>('/api/v1/system/status');
+      const r = await api.get<SystemStatus>('/system/status');
       return r.data;
     },
     staleTime: 20_000,

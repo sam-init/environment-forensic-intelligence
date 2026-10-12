@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_ignore_empty=True,
     )
 
     # ── Application ──────────────────────────────────────────────
@@ -55,8 +56,20 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, list):
+            return v
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            v = v.strip()
+            # Handle JSON array format: ["http://...", "http://..."]
+            if v.startswith("["):
+                import json
+                try:
+                    parsed = json.loads(v)
+                    return [o.strip() for o in parsed]
+                except json.JSONDecodeError:
+                    pass
+            # Handle comma-separated format
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     # ── Workers ───────────────────────────────────────────────────

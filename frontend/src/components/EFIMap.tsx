@@ -1,23 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import type { ForensicEvent } from '../types/api';
+import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GeoJSONFeatureAny = maplibregl.SourceSpecification extends infer T ? any : any;
 
 interface EFIMapProps {
-
   events?: ForensicEvent[];
   selectedEventId?: string | null;
   onEventSelect?: (event: ForensicEvent) => void;
   center?: [number, number]; // [lng, lat]
   zoom?: number;
+  activeLayer?: EELayer;
+  eeTileUrl?: string | null;
 }
 
 // Karnataka center
 const DEFAULT_CENTER: [number, number] = [76.5, 14.5];
 const DEFAULT_ZOOM = 7;
+
+const OSM_SOURCE = {
+  type: 'raster' as const,
+  tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+  tileSize: 256 as const,
+  attribution: '© OpenStreetMap contributors',
+  maxzoom: 19,
+};
 
 export function EFIMap({
   events = [],
@@ -25,6 +35,8 @@ export function EFIMap({
   onEventSelect,
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
+  activeLayer = 'osm',
+  eeTileUrl = null,
 }: EFIMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -40,13 +52,7 @@ export function EFIMap({
       style: {
         version: 8,
         sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors',
-            maxzoom: 19,
-          },
+          osm: OSM_SOURCE,
         },
         layers: [
           {
@@ -54,7 +60,7 @@ export function EFIMap({
             type: 'raster',
             source: 'osm',
             paint: {
-              'raster-opacity': 0.4, // Subtle under dark UI
+              'raster-opacity': 0.45,
               'raster-saturation': -0.8,
               'raster-brightness-max': 0.3,
             },
@@ -81,7 +87,52 @@ export function EFIMap({
     };
   }, []);
 
-  // Add event markers when map is ready
+  // ── Switch satellite / index layer ───────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const EE_SOURCE_ID = 'ee-satellite';
+    const EE_LAYER_ID = 'ee-satellite-tiles';
+
+    // Remove existing EE layer/source
+    if (map.getLayer(EE_LAYER_ID)) map.removeLayer(EE_LAYER_ID);
+    if (map.getSource(EE_SOURCE_ID)) map.removeSource(EE_SOURCE_ID);
+
+    if (activeLayer === 'osm' || !eeTileUrl) {
+      // Restore OSM opacity
+      if (map.getLayer('osm-tiles')) {
+        map.setPaintProperty('osm-tiles', 'raster-opacity', 0.45);
+      }
+      return;
+    }
+
+    // Dim OSM under the EE layer
+    if (map.getLayer('osm-tiles')) {
+      map.setPaintProperty('osm-tiles', 'raster-opacity', 0.12);
+    }
+
+    map.addSource(EE_SOURCE_ID, {
+      type: 'raster',
+      tiles: [eeTileUrl],
+      tileSize: 256,
+      attribution: '© Google Earth Engine · Sentinel-2',
+    });
+
+    // Insert the EE layer below event overlays
+    const firstEventLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+    map.addLayer(
+      {
+        id: EE_LAYER_ID,
+        type: 'raster',
+        source: EE_SOURCE_ID,
+        paint: { 'raster-opacity': 0.92 },
+      },
+      firstEventLayer,
+    );
+  }, [activeLayer, eeTileUrl, mapReady]);
+
+  // ── Add event markers ─────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -93,8 +144,8 @@ export function EFIMap({
     // Add event polygons as GeoJSON layers
     const sourceId = 'efi-events';
     if (map.getSource(sourceId)) {
-      map.removeLayer('efi-events-fill');
-      map.removeLayer('efi-events-outline');
+      if (map.getLayer('efi-events-fill')) map.removeLayer('efi-events-fill');
+      if (map.getLayer('efi-events-outline')) map.removeLayer('efi-events-outline');
       map.removeSource(sourceId);
     }
 
@@ -170,14 +221,11 @@ export function EFIMap({
       });
     }
 
-    // Add dot markers for events without geometry or for visual clarity
+    // Add dot markers for events with geometry-derived coordinates
     events.forEach((event) => {
-      // Try to get centroid from geometry or skip
-      // For demo, add a simple dot marker at a fixed location derived from event_id
       const level = event.risk_level ?? scoreToRiskLevel(event.risk_score);
       const color = getRiskColor(level);
 
-      // Only add marker if we have geometry-derived coordinates
       if (event.geometry?.coordinates) {
         const coords = getFirstCoordinate(event.geometry);
         if (coords) {
@@ -201,7 +249,7 @@ export function EFIMap({
     });
   }, [events, selectedEventId, mapReady]);
 
-  // Fly to selected event
+  // ── Fly to selected event ─────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !selectedEventId) return;

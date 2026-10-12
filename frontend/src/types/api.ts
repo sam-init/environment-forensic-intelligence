@@ -86,6 +86,7 @@ export interface EventListResponse {
 export interface SystemStatus {
   demo_mode: boolean;
   copernicus_available: boolean;
+  earth_engine_available: boolean;
   active_signals: {
     critical: number;
     high: number;
@@ -130,4 +131,48 @@ export interface Job {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+}
+
+// ── Earth Engine ──────────────────────────────────────────────────────────────
+
+export interface EEStatus {
+  available: boolean;
+  project: string;
+}
+
+export interface EEDateRange {
+  start: string;
+  end: string;
+}
+
+export interface EETileResponse {
+  tile_url: string;
+  vis_type: string;
+  date_range: EEDateRange;
+  source: string;
+}
+
+export interface EEOverview {
+  scene_count: number;
+  date_range: EEDateRange;
+  tiles: {
+    true_color: string;
+    ndvi: string;
+    ndwi: string;
+    bsi: string;
+  };
+  source: string;
+  ee_project: string;
+}
+
+export interface EESiteStats {
+  ndvi_mean: number;
+  ndvi_stddev: number;
+  ndwi_mean: number;
+  ndwi_stddev: number;
+  bsi_mean: number;
+  bsi_stddev: number;
+  scene_count: number;
+  date_range: EEDateRange;
+  source: string;
 }

@@ -21,6 +21,7 @@ from app.api.v1 import api_router
 from app.api.v1.system import router as system_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.services.earth_engine import initialize_ee
 
 logger = structlog.get_logger(__name__)
 
@@ -43,6 +44,16 @@ async def lifespan(app: FastAPI):
         logger.info(
             "DEMO MODE active — satellite ingestion uses synthetic data. "
             "Set DEMO_MODE=false and configure Copernicus credentials for real data."
+        )
+
+    # ── Google Earth Engine ──────────────────────────────────────
+    ee_ok = initialize_ee()
+    if ee_ok:
+        logger.info("Google Earth Engine ready — real-time satellite data available.")
+    else:
+        logger.warning(
+            "Google Earth Engine NOT available — "
+            "run `earthengine authenticate` and restart."
         )
 
     yield

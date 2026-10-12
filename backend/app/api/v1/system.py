@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.database import check_database_connection, check_postgis_available, get_db
 from app.models import ForensicEvent, Job, Observation, Site
 from app.schemas import HealthResponse, JobResponse, ReadinessResponse
+from app.services.earth_engine import is_ee_available
 
 router = APIRouter(tags=["System"])
 
@@ -77,6 +78,7 @@ async def system_status(
         return {
             "demo_mode": settings.demo_mode,
             "copernicus_available": settings.copernicus_available,
+            "earth_engine_available": is_ee_available(),
             "active_signals": {
                 "critical": 1,
                 "high": 1,
@@ -120,6 +122,7 @@ async def system_status(
         return {
             "demo_mode": settings.demo_mode,
             "copernicus_available": settings.copernicus_available,
+            "earth_engine_available": is_ee_available(),
             "active_signals": {
                 "critical": len(critical),
                 "high": len(high),
@@ -132,6 +135,7 @@ async def system_status(
         return {
             "demo_mode": settings.demo_mode,
             "copernicus_available": settings.copernicus_available,
+            "earth_engine_available": is_ee_available(),
             "active_signals": {
                 "critical": 1,
                 "high": 1,

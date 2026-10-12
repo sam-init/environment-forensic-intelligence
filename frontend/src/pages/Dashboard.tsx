@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Layers, RefreshCw } from 'lucide-react';
+import { Satellite, RefreshCw } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ForensicEvent, EventListResponse, SystemStatus } from '../types/api';
 import { SignalCard } from '../components/SignalCard';
 import { EFIMap } from '../components/EFIMap';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { EmptyState } from '../components/EmptyState';
+import { EarthEnginePanel, type EELayer } from '../components/EarthEnginePanel';
 
 export function DashboardPage() {
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
+  const [activeLayer, setActiveLayer] = useState<EELayer>('osm');
+  const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // System status
@@ -49,6 +52,7 @@ export function DashboardPage() {
 
   const events = eventsData?.items ?? [];
   const isDemoMode = status?.demo_mode ?? true;
+  const eeAvailable = status?.earth_engine_available ?? false;
 
   // Auto-seed demo data if in demo mode and no events loaded
   const { data: demoSeeded } = useQuery({
@@ -70,6 +74,14 @@ export function DashboardPage() {
   }, [demoSeeded, refetch]);
 
   const signals = status?.active_signals ?? { critical: 0, high: 0, moderate: 0 };
+
+  // Geometry of selected event (for site-stats call)
+  const selectedGeometry = selectedEvent?.geometry ?? null;
+
+  function handleLayerChange(layer: EELayer, tileUrl?: string) {
+    setActiveLayer(layer);
+    setEeTileUrl(tileUrl ?? null);
+  }
 
   return (
     <div className="app-body">
@@ -95,7 +107,30 @@ export function DashboardPage() {
           <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
             {status?.sites_monitored ?? 0} sites monitored · Karnataka, India
           </div>
+          {/* EE status badge */}
+          <div style={{
+            marginTop: 'var(--space-2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 10,
+            color: eeAvailable ? '#22c55e' : 'var(--color-text-muted)',
+          }}>
+            <Satellite size={10} />
+            {eeAvailable ? 'GEE Live Data' : 'GEE Offline'}
+          </div>
         </div>
+
+        {/* Earth Engine Layer Panel */}
+        {eeAvailable && (
+          <div className="panel-section" style={{ paddingTop: 0 }}>
+            <EarthEnginePanel
+              activeLayer={activeLayer}
+              onLayerChange={handleLayerChange}
+              siteGeometry={selectedGeometry}
+            />
+          </div>
+        )}
 
         {/* Events List */}
         <div className="events-list">
@@ -109,7 +144,7 @@ export function DashboardPage() {
           {isError && (
             <EmptyState
               title="Could not load events"
-              body="The backend may be starting up. Check that Docker containers are running."
+              body="The backend may be starting up. Check that it is running on port 8000."
               action={
                 <button className="btn btn-secondary btn-sm" onClick={() => refetch()}>
                   <RefreshCw size={12} /> Retry
@@ -144,23 +179,9 @@ export function DashboardPage() {
           events={events}
           selectedEventId={selectedEvent?.event_id ?? null}
           onEventSelect={setSelectedEvent}
+          activeLayer={activeLayer}
+          eeTileUrl={eeTileUrl}
         />
-
-        {/* Layer Control */}
-        <div className="map-layer-control">
-          <div className="map-layer-title">Layers</div>
-          {[
-            { color: '#3b7fff', label: 'Monitoring Sites' },
-            { color: 'var(--color-critical)', label: 'Critical Events' },
-            { color: 'var(--color-high)', label: 'High Risk' },
-            { color: 'var(--color-moderate)', label: 'Moderate Risk' },
-          ].map(({ color, label }) => (
-            <div key={label} className="map-layer-item">
-              <div className="map-layer-swatch" style={{ background: color }} />
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
 
         {/* Attribution notice */}
         <div style={{
@@ -176,8 +197,11 @@ export function DashboardPage() {
           padding: '2px var(--space-2)',
           borderRadius: 'var(--radius-sm)',
         }}>
-          <Layers size={10} />
-          OSM · MapLibre GL · EFI Platform v0.1.0
+          OSM · MapLibre GL
+          {activeLayer !== 'osm' && eeTileUrl && (
+            <> · <span style={{ color: '#3b82f6' }}>Google Earth Engine</span></>
+          )}
+          {' · EFI Platform v0.1.0'}
         </div>
 
         {/* Event Detail Overlay */}

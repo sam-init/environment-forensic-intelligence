@@ -7,12 +7,20 @@ import { SignalCard } from '../components/SignalCard';
 import { EFIMap } from '../components/EFIMap';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { EmptyState } from '../components/EmptyState';
-import { EarthEnginePanel, type EELayer } from '../components/EarthEnginePanel';
+import { EarthEnginePanel, type EELayer, type CompareState } from '../components/EarthEnginePanel';
 
 export function DashboardPage() {
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
-  const [activeLayer, setActiveLayer] = useState<EELayer>('osm');
+  const [activeLayer, setActiveLayer] = useState<EELayer>('true_color');
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
+  const [compareState, setCompareState] = useState<CompareState>({
+    active: false,
+    beforeDate: '2024-02-15',
+    afterDate: '2025-01-15',
+    visType: 'true_color',
+    beforeTileUrl: null,
+    afterTileUrl: null,
+  });
   const queryClient = useQueryClient();
 
   // System status
@@ -117,17 +125,18 @@ export function DashboardPage() {
             color: eeAvailable ? '#22c55e' : 'var(--color-text-muted)',
           }}>
             <Satellite size={10} />
-            {eeAvailable ? 'GEE Live Data' : 'GEE Offline'}
+            {eeAvailable ? 'GEE Live Data (10m Bicubic)' : 'GEE Offline'}
           </div>
         </div>
 
-        {/* Earth Engine Layer Panel */}
+        {/* Earth Engine Layer & Comparison Panel */}
         {eeAvailable && (
           <div className="panel-section" style={{ paddingTop: 0 }}>
             <EarthEnginePanel
               activeLayer={activeLayer}
               onLayerChange={handleLayerChange}
               siteGeometry={selectedGeometry}
+              onCompareChange={setCompareState}
             />
           </div>
         )}
@@ -143,11 +152,11 @@ export function DashboardPage() {
 
           {isError && (
             <EmptyState
-              title="Could not load events"
-              body="The backend may be starting up. Check that it is running on port 8000."
+              title="Unable to load signals"
+              body="Could not connect to the EFI backend. Please verify the service is running."
               action={
-                <button className="btn btn-secondary btn-sm" onClick={() => refetch()}>
-                  <RefreshCw size={12} /> Retry
+                <button className="btn btn-secondary" onClick={() => refetch()}>
+                  <RefreshCw size={14} /> Retry
                 </button>
               }
             />
@@ -156,17 +165,17 @@ export function DashboardPage() {
           {!isLoading && !isError && events.length === 0 && (
             <EmptyState
               title="No active signals"
-              body="No forensic events detected yet. Add a monitoring site to begin analysis."
+              body="All monitored sites in Karnataka are within baseline parameters."
             />
           )}
 
           {events.map((event) => (
             <SignalCard
-              key={event.id}
+              key={event.event_id}
               event={event}
-              selected={selectedEvent?.event_id === event.event_id}
+              selected={event.event_id === selectedEvent?.event_id}
               onClick={() => setSelectedEvent(
-                selectedEvent?.event_id === event.event_id ? null : event
+                event.event_id === selectedEvent?.event_id ? null : event
               )}
             />
           ))}
@@ -181,6 +190,11 @@ export function DashboardPage() {
           onEventSelect={setSelectedEvent}
           activeLayer={activeLayer}
           eeTileUrl={eeTileUrl}
+          compareMode={compareState.active}
+          beforeTileUrl={compareState.beforeTileUrl}
+          afterTileUrl={compareState.afterTileUrl}
+          beforeLabel={compareState.beforeLabel}
+          afterLabel={compareState.afterLabel}
         />
 
         {/* Attribution notice */}
@@ -193,13 +207,15 @@ export function DashboardPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-1)',
-          background: 'rgba(9,9,11,0.7)',
-          padding: '2px var(--space-2)',
+          background: 'rgba(9,9,11,0.85)',
+          padding: '3px var(--space-2)',
           borderRadius: 'var(--radius-sm)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          zIndex: 10,
         }}>
-          OSM · MapLibre GL
-          {activeLayer !== 'osm' && eeTileUrl && (
-            <> · <span style={{ color: '#3b82f6' }}>Google Earth Engine</span></>
+          OSM · MapLibre GL · <span style={{ color: '#3b82f6' }}>Google Earth Engine (Sentinel-2 10m Bicubic)</span>
+          {compareState.active && (
+            <span style={{ color: '#f59e0b', marginLeft: 4 }}>[Dual Compare Active]</span>
           )}
           {' · EFI Platform v0.1.0'}
         </div>
@@ -211,6 +227,7 @@ export function DashboardPage() {
             onClose={() => setSelectedEvent(null)}
             onReview={(newStatus) => {
               reviewMutation.mutate({ eventId: selectedEvent.event_id, newStatus });
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               setSelectedEvent({ ...selectedEvent, status: newStatus as any });
             }}
           />

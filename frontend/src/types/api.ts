@@ -176,3 +176,29 @@ export interface EESiteStats {
   date_range: EEDateRange;
   source: string;
 }
+
+export interface EESceneInfo {
+  target_date: string;
+  scene_date: string;
+  cloud_percentage: number;
+  scene_id: string;
+  tile_url: string;
+}
+
+export interface EECompareResult {
+  before: EESceneInfo;
+  after: EESceneInfo;
+  vis_type: string;
+  metrics: {
+    ndvi_before?: number;
+    ndvi_after?: number;
+    ndvi_delta?: number;
+    bsi_before?: number;
+    bsi_after?: number;
+    bsi_delta?: number;
+    excavation_signal?: boolean;
+    vegetation_loss_signal?: boolean;
+  };
+  source: string;
+}
+

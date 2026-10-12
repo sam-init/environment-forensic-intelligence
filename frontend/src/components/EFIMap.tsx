@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl';
 import type { ForensicEvent } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
+import { CitySearchBar } from './CitySearchBar';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GeoJSONFeatureAny = maplibregl.SourceSpecification extends infer T ? any : any;
@@ -264,11 +265,17 @@ export function EFIMap({
   }, [selectedEventId, mapReady]);
 
   return (
-    <div
-      ref={mapContainer}
-      className="map-canvas"
-      style={{ width: '100%', height: '100%' }}
-    />
+    <div className="map-wrapper" style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div
+        ref={mapContainer}
+        className="map-canvas"
+        style={{ width: '100%', height: '100%' }}
+      />
+      <CitySearchBar
+        map={mapReady ? mapRef.current : null}
+        isPanelOpen={Boolean(selectedEventId)}
+      />
+    </div>
   );
 }
 

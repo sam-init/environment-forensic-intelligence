@@ -31,6 +31,16 @@ const OSM_SOURCE = {
   maxzoom: 19,
 };
 
+// Separate visual-inspection imagery from Sentinel-2 analysis: this source may
+// offer sub-metre coverage, while Sentinel-2's native true-colour pixels are 10 m.
+const HIGH_RES_IMAGERY_SOURCE = {
+  type: 'raster' as const,
+  tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+  tileSize: 256 as const,
+  attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  maxzoom: 19,
+};
+
 export function EFIMap({
   events = [],
   selectedEventId,
@@ -112,6 +122,19 @@ export function EFIMap({
 
     if (map.getLayer(EE_LAYER_ID)) map.removeLayer(EE_LAYER_ID);
     if (map.getSource(EE_SOURCE_ID)) map.removeSource(EE_SOURCE_ID);
+
+    if (activeLayer === 'high_res_imagery') {
+      if (map.getLayer('osm-tiles')) map.setPaintProperty('osm-tiles', 'raster-opacity', 0);
+      map.addSource(EE_SOURCE_ID, HIGH_RES_IMAGERY_SOURCE);
+      const firstEventLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+      map.addLayer({
+        id: EE_LAYER_ID,
+        type: 'raster',
+        source: EE_SOURCE_ID,
+        paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
+      }, firstEventLayer);
+      return;
+    }
 
     if (activeLayer === 'osm' || !eeTileUrl) {
       if (map.getLayer('osm-tiles')) {

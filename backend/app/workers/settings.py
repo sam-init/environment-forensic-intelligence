@@ -9,7 +9,9 @@ from app.core.config import get_settings
 class WorkerSettings:
     """ARQ worker configuration."""
 
-    functions = []  # Jobs will be registered here as the pipeline expands
+    from app.workers.change_tiles import process_change_tile_job
+    functions = [process_change_tile_job]
+    max_tries = 3
 
     @classmethod
     def on_startup(cls, ctx: dict) -> None:

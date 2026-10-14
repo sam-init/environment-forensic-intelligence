@@ -18,7 +18,7 @@ import {
 import { api } from '../utils/api';
 import type { EEOverview, EECompareResult } from '../types/api';
 
-export type EELayer = 'osm' | 'true_color' | 'ndvi' | 'ndwi' | 'bsi';
+export type EELayer = 'osm' | 'high_res_imagery' | 'true_color' | 'ndvi' | 'ndwi' | 'bsi';
 
 export interface CompareState {
   active: boolean;
@@ -45,6 +45,12 @@ const LAYER_META: Record<EELayer, { label: string; icon: React.ReactNode; desc: 
     icon: <Layers size={13} />,
     desc: 'OpenStreetMap vector base',
     color: '#6b7280',
+  },
+  high_res_imagery: {
+    label: 'High-Resolution Imagery',
+    icon: <Satellite size={13} />,
+    desc: 'Detailed aerial/satellite basemap for visual inspection',
+    color: '#a855f7',
   },
   true_color: {
     label: 'True Colour',
@@ -191,8 +197,8 @@ export function EarthEnginePanel({
   }, [panelTab, compareData, beforeDate, afterDate, compareVis]);
 
   function handleLayerSwitch(layer: EELayer) {
-    if (layer === 'osm') {
-      onLayerChange('osm', undefined);
+    if (layer === 'osm' || layer === 'high_res_imagery') {
+      onLayerChange(layer, undefined);
       return;
     }
     if (!overview?.tiles) return;
@@ -255,7 +261,7 @@ export function EarthEnginePanel({
             {(Object.keys(LAYER_META) as EELayer[]).map((layer) => {
               const meta = LAYER_META[layer];
               const isActive = activeLayer === layer;
-              const isDisabled = layer !== 'osm' && !overview?.tiles;
+              const isDisabled = !['osm', 'high_res_imagery'].includes(layer) && !overview?.tiles;
 
               return (
                 <button

@@ -1,8 +1,13 @@
 """
 Google Earth Engine Service
-Provides real-time Sentinel-2 satellite tile URLs, bicubic-resampled high-resolution tiles,
-temporal before-and-after change detection, and band index statistics
-for Karnataka environmental monitoring sites.
+Provides real-time Sentinel-2 satellite tile URLs with proper XYZ tile serving.
+
+KEY DESIGN PRINCIPLE:
+    Tile URLs are generated WITHOUT clipping to any geometry.
+    GEE's tile server serves full native-resolution (10m Sentinel-2) tiles
+    at all zoom levels — exactly like the GEE Code Editor.
+    Geometry is ONLY used to filter which Sentinel-2 scenes are included
+    in the median composite (to avoid scenes from far away dominating).
 
 Authentication: Uses credentials stored by `earthengine authenticate`
 (~/.config/earthengine/credentials) via ee.Initialize().
@@ -20,12 +25,12 @@ logger = logging.getLogger(__name__)
 
 EE_PROJECT = "forensic-intelligence-511405"
 
-# ── Sentinel-2 collection (Surface Reflectance, harmonised) ──────────────────
+# Sentinel-2 Surface Reflectance (harmonised)
 S2_COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
 
-# Default Karnataka bounding box coordinates [minLon, minLat, maxLon, maxLat]
-_KARNATAKA_COORDS = [74.0, 11.5, 78.6, 18.5]
-
+# Default focus area — Karnataka mining hotspots (Hubli-Dharwad area)
+# Used only for scene FILTERING, never for clipping tiles
+_DEFAULT_FILTER_COORDS = [75.5, 14.0, 76.5, 15.5]  # ~150km × 150km
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Initialisation
@@ -67,7 +72,7 @@ def _date_range(days_back: int = 60) -> tuple[str, str]:
 
 
 def _mask_s2_clouds(image: ee.Image) -> ee.Image:
-    """Remove clouds using Sentinel-2 QA60 band, dividing reflectance by 10000."""
+    """Remove clouds using Sentinel-2 QA60 band, scaling reflectance to 0..1."""
     qa = image.select("QA60")
     cloud_bit_mask = 1 << 10
     cirrus_bit_mask = 1 << 11
@@ -83,7 +88,6 @@ def _add_indices(image: ee.Image) -> ee.Image:
     """Compute NDVI, NDWI, and BSI bands on reflectance (0..1)."""
     ndvi = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
     ndwi = image.normalizedDifference(["B3", "B8"]).rename("NDWI")
-    # BSI = ((B11 + B4) - (B8 + B2)) / ((B11 + B4) + (B8 + B2))
     bsi = image.expression(
         "((B11 + B4) - (B8 + B2)) / ((B11 + B4) + (B8 + B2))",
         {
@@ -96,18 +100,25 @@ def _add_indices(image: ee.Image) -> ee.Image:
     return image.addBands([ndvi, ndwi, bsi])
 
 
-def _get_recent_composite(geometry: ee.Geometry, days_back: int = 60) -> ee.Image:
-    """Return a cloud-filtered composite with bicubic resampling."""
+def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) -> ee.Image:
+    """
+    Build a cloud-free Sentinel-2 median composite.
+
+    IMPORTANT: The composite is filtered by geometry (so only scenes covering
+    the AOI are included), but is NOT clipped — the returned image has global
+    extent so GEE can serve sharp XYZ tiles at any zoom level.
+    """
     start, end = _date_range(days_back)
     collection = (
         ee.ImageCollection(S2_COLLECTION)
-        .filterBounds(geometry)
+        .filterBounds(filter_geometry)        # filter SCENES only, don't clip
         .filterDate(start, end)
-        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
         .map(_mask_s2_clouds)
         .map(_add_indices)
     )
-    return collection.median().resample("bicubic")
+    # mosaic() preserves global coverage; median() also works but is slower
+    return collection.median()
 
 
 def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
@@ -119,15 +130,15 @@ def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
 VIS_PARAMS: dict[str, dict] = {
     "true_color": {
         "bands": ["B4", "B3", "B2"],  # Red, Green, Blue
-        "min": 0,
-        "max": 0.25,
-        "gamma": 1.25,
+        "min": 0.0,
+        "max": 0.3,
+        "gamma": 1.6,
     },
     "false_color": {
         "bands": ["B8", "B4", "B3"],  # NIR, Red, Green
-        "min": 0,
-        "max": 0.35,
-        "gamma": 1.2,
+        "min": 0.0,
+        "max": 0.4,
+        "gamma": 1.3,
     },
     "ndvi": {
         "bands": ["NDVI"],
@@ -160,11 +171,17 @@ async def get_ee_tile_url(
     days_back: int = 60,
 ) -> dict[str, Any]:
     """
-    Return a MapLibre-compatible XYZ tile URL from Earth Engine with bicubic resampling.
+    Return a MapLibre-compatible XYZ tile URL from Earth Engine.
+    Tiles are NOT clipped — GEE serves native 10m resolution at all zoom levels.
     """
     def _fetch():
-        aoi = _geometry_from_geojson(geometry) if geometry else ee.Geometry.Rectangle(_KARNATAKA_COORDS)
-        composite = _get_recent_composite(aoi, days_back)
+        # Use provided geometry for scene filtering, or default focus area
+        if geometry:
+            filter_geom = _geometry_from_geojson(geometry)
+        else:
+            filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
+
+        composite = _get_composite_unclipped(filter_geom, days_back)
         params = VIS_PARAMS.get(vis_type, VIS_PARAMS["true_color"])
         map_id = composite.getMapId(params)
         tile_url = map_id["tile_fetcher"].url_format
@@ -173,7 +190,7 @@ async def get_ee_tile_url(
             "tile_url": tile_url,
             "vis_type": vis_type,
             "date_range": {"start": start, "end": end},
-            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m bicubic)",
+            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)",
         }
 
     return await asyncio.get_event_loop().run_in_executor(None, _fetch)
@@ -187,20 +204,24 @@ async def get_date_scene_tile(
 ) -> dict[str, Any]:
     """
     Find the clearest Sentinel-2 scene around `target_date` (+/- `window_days`)
-    and generate a high-resolution, bicubic-resampled tile URL.
+    and generate a high-resolution tile URL.
+    Tiles are NOT clipped — sharp at all zoom levels.
     """
     def _fetch():
         dt = datetime.strptime(target_date, "%Y-%m-%d")
         start = (dt - timedelta(days=window_days)).strftime("%Y-%m-%d")
         end = (dt + timedelta(days=window_days)).strftime("%Y-%m-%d")
 
-        aoi = _geometry_from_geojson(geometry) if geometry else ee.Geometry.Rectangle(_KARNATAKA_COORDS)
+        if geometry:
+            filter_geom = _geometry_from_geojson(geometry)
+        else:
+            filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
 
         col = (
             ee.ImageCollection(S2_COLLECTION)
-            .filterBounds(aoi)
+            .filterBounds(filter_geom)
             .filterDate(start, end)
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
             .sort("CLOUDY_PIXEL_PERCENTAGE")
         )
 
@@ -210,20 +231,20 @@ async def get_date_scene_tile(
             scene_date = ee.Date(best.get("system:time_start")).format("YYYY-MM-dd").getInfo()
             cloud_pct = round(best.get("CLOUDY_PIXEL_PERCENTAGE").getInfo() or 0, 1)
             scene_id = str(best.get("system:index").getInfo())
-            img = best
+            # Scale to 0-1 range and add indices — do NOT clip
+            scaled = best.divide(10000)
         else:
-            # Fallback to median composite of the window
+            # Fallback: median composite of the window
             col_all = (
                 ee.ImageCollection(S2_COLLECTION)
-                .filterBounds(aoi)
+                .filterBounds(filter_geom)
                 .filterDate(start, end)
             )
-            img = col_all.median()
+            scaled = col_all.median().divide(10000)
             scene_date = f"{start} to {end}"
             cloud_pct = 0.0
             scene_id = "composite"
 
-        scaled = img.divide(10000)
         ndvi = scaled.normalizedDifference(["B8", "B4"]).rename("NDVI")
         ndwi = scaled.normalizedDifference(["B3", "B8"]).rename("NDWI")
         bsi = scaled.expression(
@@ -237,10 +258,10 @@ async def get_date_scene_tile(
         ).rename("BSI")
 
         all_bands = scaled.addBands([ndvi, ndwi, bsi])
-        resampled = all_bands.resample("bicubic")
+        # NO .clip() — let GEE serve global tiles at native resolution
 
         params = VIS_PARAMS.get(vis_type, VIS_PARAMS["true_color"])
-        map_id = resampled.getMapId(params)
+        map_id = all_bands.getMapId(params)
         tile_url = map_id["tile_fetcher"].url_format
 
         return {
@@ -250,7 +271,7 @@ async def get_date_scene_tile(
             "scene_id": scene_id,
             "vis_type": vis_type,
             "target_date": target_date,
-            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m bicubic)",
+            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)",
         }
 
     return await asyncio.get_event_loop().run_in_executor(None, _fetch)
@@ -264,22 +285,26 @@ async def get_before_after_comparison(
     window_days: int = 25,
 ) -> dict[str, Any]:
     """
-    Generate paired before & after Sentinel-2 tile sets and compute
-    spectral index changes (NDVI drop, BSI increase) for forensic comparison.
+    Generate paired before & after Sentinel-2 tile URLs for side-by-side comparison.
+    Tiles are NOT clipped — full native resolution at any zoom.
+    Change metrics are computed separately via reduceRegion (geometry used only there).
     """
     def _fetch():
-        aoi = _geometry_from_geojson(geometry) if geometry else ee.Geometry.Rectangle(_KARNATAKA_COORDS)
+        if geometry:
+            filter_geom = _geometry_from_geojson(geometry)
+        else:
+            filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
 
-        def _get_processed_image(target_dt_str: str):
+        def _get_scene_image(target_dt_str: str):
             dt = datetime.strptime(target_dt_str, "%Y-%m-%d")
             start = (dt - timedelta(days=window_days)).strftime("%Y-%m-%d")
             end = (dt + timedelta(days=window_days)).strftime("%Y-%m-%d")
 
             col = (
                 ee.ImageCollection(S2_COLLECTION)
-                .filterBounds(aoi)
+                .filterBounds(filter_geom)
                 .filterDate(start, end)
-                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+                .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
                 .sort("CLOUDY_PIXEL_PERCENTAGE")
             )
             count = col.size().getInfo()
@@ -288,14 +313,14 @@ async def get_before_after_comparison(
                 sc_date = ee.Date(best.get("system:time_start")).format("YYYY-MM-dd").getInfo()
                 cloud = round(best.get("CLOUDY_PIXEL_PERCENTAGE").getInfo() or 0, 1)
                 sc_id = str(best.get("system:index").getInfo())
-                raw_img = best
+                scaled = best.divide(10000)
             else:
-                raw_img = ee.ImageCollection(S2_COLLECTION).filterBounds(aoi).filterDate(start, end).median()
+                col_all = ee.ImageCollection(S2_COLLECTION).filterBounds(filter_geom).filterDate(start, end)
+                scaled = col_all.median().divide(10000)
                 sc_date = f"{start} to {end}"
                 cloud = 0.0
                 sc_id = "composite"
 
-            scaled = raw_img.divide(10000)
             ndvi = scaled.normalizedDifference(["B8", "B4"]).rename("NDVI")
             ndwi = scaled.normalizedDifference(["B3", "B8"]).rename("NDWI")
             bsi = scaled.expression(
@@ -307,25 +332,27 @@ async def get_before_after_comparison(
                     "B2": scaled.select("B2"),
                 },
             ).rename("BSI")
-            img = scaled.addBands([ndvi, ndwi, bsi]).resample("bicubic")
+            # NO .clip() here
+            img = scaled.addBands([ndvi, ndwi, bsi])
             return img, sc_date, cloud, sc_id
 
-        before_img, b_date, b_cloud, b_id = _get_processed_image(before_date)
-        after_img, a_date, a_cloud, a_id = _get_processed_image(after_date)
+        before_img, b_date, b_cloud, b_id = _get_scene_image(before_date)
+        after_img, a_date, a_cloud, a_id = _get_scene_image(after_date)
 
         params = VIS_PARAMS.get(vis_type, VIS_PARAMS["true_color"])
-
         before_mid = before_img.getMapId(params)
         after_mid = after_img.getMapId(params)
 
-        # Delta analysis if geometry provided
-        stats = {}
+        # Change metrics — geometry IS used here (only for stats, not tiles)
+        stats: dict = {}
         if geometry:
             b_stats = before_img.select(["NDVI", "NDWI", "BSI"]).reduceRegion(
-                reducer=ee.Reducer.mean(), geometry=aoi, scale=20, maxPixels=1e9, bestEffort=True
+                reducer=ee.Reducer.mean(), geometry=filter_geom, scale=20,
+                maxPixels=1e9, bestEffort=True
             ).getInfo()
             a_stats = after_img.select(["NDVI", "NDWI", "BSI"]).reduceRegion(
-                reducer=ee.Reducer.mean(), geometry=aoi, scale=20, maxPixels=1e9, bestEffort=True
+                reducer=ee.Reducer.mean(), geometry=filter_geom, scale=20,
+                maxPixels=1e9, bestEffort=True
             ).getInfo()
 
             b_ndvi = round(b_stats.get("NDVI") or 0, 3)
@@ -361,7 +388,7 @@ async def get_before_after_comparison(
             },
             "vis_type": vis_type,
             "metrics": stats,
-            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m bicubic)",
+            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)",
         }
 
     return await asyncio.get_event_loop().run_in_executor(None, _fetch)
@@ -373,11 +400,11 @@ async def get_site_stats(
 ) -> dict[str, Any]:
     """
     Compute mean NDVI, NDWI, and BSI for the given GeoJSON geometry
-    over the last `days_back` days. Returns a dict with stats + date range.
+    over the last `days_back` days.
     """
     def _fetch():
         aoi = _geometry_from_geojson(geometry)
-        composite = _get_recent_composite(aoi, days_back)
+        composite = _get_composite_unclipped(aoi, days_back)
 
         stats = composite.select(["NDVI", "NDWI", "BSI"]).reduceRegion(
             reducer=ee.Reducer.mean().combine(
@@ -396,7 +423,7 @@ async def get_site_stats(
             ee.ImageCollection(S2_COLLECTION)
             .filterBounds(aoi)
             .filterDate(start, end)
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
             .size()
             .getInfo()
         )
@@ -418,27 +445,30 @@ async def get_site_stats(
 
 async def get_karnataka_overview() -> dict[str, Any]:
     """
-    Return bicubic-resampled tile URLs for all key visualisations over Karnataka
-    plus a recent scene count for the dashboard status widget.
+    Return tile URLs for all key visualisations over the Karnataka mining hotspot area,
+    plus a recent scene count.
+
+    Tiles are NOT clipped — sharp at any zoom level, exactly like GEE Code Editor.
     """
     def _fetch():
-        aoi = ee.Geometry.Rectangle(_KARNATAKA_COORDS)
+        # Filter area: Hubli-Dharwad mining belt (tight AOI for best scene selection)
+        filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
         start, end = _date_range(60)
 
         scene_count = (
             ee.ImageCollection(S2_COLLECTION)
-            .filterBounds(aoi)
+            .filterBounds(filter_geom)
             .filterDate(start, end)
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
             .size()
             .getInfo()
         )
 
-        composite = _get_recent_composite(aoi, 60)
+        # Unclipped composite — tiles will be sharp at all zoom levels
+        composite = _get_composite_unclipped(filter_geom, 60)
 
-        def _url(vis):
-            params = VIS_PARAMS[vis]
-            return composite.getMapId(params)["tile_fetcher"].url_format
+        def _url(vis: str) -> str:
+            return composite.getMapId(VIS_PARAMS[vis])["tile_fetcher"].url_format
 
         return {
             "scene_count": scene_count,
@@ -449,7 +479,7 @@ async def get_karnataka_overview() -> dict[str, Any]:
                 "ndwi": _url("ndwi"),
                 "bsi": _url("bsi"),
             },
-            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m bicubic)",
+            "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)",
             "ee_project": EE_PROJECT,
         }
 

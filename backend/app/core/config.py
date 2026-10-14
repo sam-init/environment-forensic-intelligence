@@ -51,7 +51,12 @@ class Settings(BaseSettings):
     copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
 
     # ── CORS ─────────────────────────────────────────────────────
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     @field_validator("cors_origins", mode="before")
     @classmethod

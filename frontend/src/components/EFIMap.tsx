@@ -124,13 +124,15 @@ export function EFIMap({
       map.setPaintProperty('osm-tiles', 'raster-opacity', 0.12);
     }
 
-    // High-resolution configuration: 256 tileSize, maxzoom 18, linear resampling
+    // GEE tile source — 256px tiles, native 10m Sentinel-2 resolution
+    // No minzoom restriction — GEE serves sharp tiles at all zoom levels
     map.addSource(EE_SOURCE_ID, {
       type: 'raster',
       tiles: [eeTileUrl],
       tileSize: 256,
+      minzoom: 0,
       maxzoom: 18,
-      attribution: '© Google Earth Engine · Sentinel-2 (10m bicubic)',
+      attribution: '© Google Earth Engine · Sentinel-2 (10m)',
     });
 
     const firstEventLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;

@@ -473,7 +473,7 @@ class ProcessingTile(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
     tile_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=False)
-    tile_size_m: Mapped[int] = mapped_column(Integer, nullable=False, default=5000)
+    tile_size_m: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
     last_input_signature: Mapped[str | None] = mapped_column(String(64))
     last_processed_at: Mapped[datetime | None] = mapped_column(DateTime)

@@ -11,10 +11,18 @@ from math import floor
 from typing import Any
 
 from pyproj import Transformer
-from shapely.geometry import box, shape, mapping
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, box, mapping, shape
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
+from shapely.prepared import prep
 
-KARNATAKA_UTM_EPSG = 32643
+# Belagavi district lies inside UTM zone 43N.
+REGION_UTM_EPSG = 32643
+KARNATAKA_UTM_EPSG = REGION_UTM_EPSG
+
+DEFAULT_TILE_SIZE_M = 1000
+DEFAULT_MAX_TILES = 50_000
+DEFAULT_TILE_PREFIX = "BEL"
 
 
 @dataclass(frozen=True)
@@ -43,13 +51,51 @@ def processing_signature(before: ComparisonPeriod, after: ComparisonPeriod, thre
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def generate_grid_tiles(boundary_geojson: dict[str, Any], tile_size_m: int = 5000) -> list[dict[str, Any]]:
-    """Intersect a fixed UTM grid with a boundary and return WGS84 tile polygons."""
+def polygonal_geometry(geometry: BaseGeometry) -> MultiPolygon | None:
+    """Return only polygon parts as a MultiPolygon (or None if there are none).
+
+    MultiPolygon is required because the database columns enforcing the type are
+    geometry(MultiPolygon, 4326); PostGIS rejects a bare Polygon there.
+    """
+    if geometry.is_empty:
+        return None
+    if isinstance(geometry, Polygon):
+        return MultiPolygon([geometry])
+    if isinstance(geometry, MultiPolygon):
+        return geometry
+    if isinstance(geometry, GeometryCollection):
+        polygons = []
+        for part in geometry.geoms:
+            if isinstance(part, Polygon):
+                polygons.append(part)
+            elif isinstance(part, MultiPolygon):
+                polygons.extend(part.geoms)
+        if polygons:
+            return MultiPolygon(polygons)
+    return None
+
+
+def generate_grid_tiles(
+    boundary_geojson: dict[str, Any],
+    tile_size_m: int = DEFAULT_TILE_SIZE_M,
+    tile_prefix: str = DEFAULT_TILE_PREFIX,
+    max_tiles: int = DEFAULT_MAX_TILES,
+) -> list[dict[str, Any]]:
+    """Intersect a fixed UTM grid with a boundary and return WGS84 tile polygons.
+
+    Cells are clipped to the district outline; interior cells remain exactly
+    tile_size_m × tile_size_m. The grid is a processing unit, not an incident.
+    """
     if tile_size_m <= 0:
         raise ValueError("tile_size_m must be positive")
-    to_utm = Transformer.from_crs(4326, KARNATAKA_UTM_EPSG, always_xy=True).transform
-    to_wgs84 = Transformer.from_crs(KARNATAKA_UTM_EPSG, 4326, always_xy=True).transform
-    boundary = transform(to_utm, shape(boundary_geojson))
+    if max_tiles <= 0:
+        raise ValueError("max_tiles must be positive")
+    to_utm = Transformer.from_crs(4326, REGION_UTM_EPSG, always_xy=True).transform
+    to_wgs84 = Transformer.from_crs(REGION_UTM_EPSG, 4326, always_xy=True).transform
+    boundary = polygonal_geometry(transform(to_utm, shape(boundary_geojson)))
+    if boundary is None:
+        return []
+    prepared = prep(boundary)
     min_x, min_y, max_x, max_y = boundary.bounds
     start_x, start_y = floor(min_x / tile_size_m) * tile_size_m, floor(min_y / tile_size_m) * tile_size_m
     tiles: list[dict[str, Any]] = []
@@ -57,10 +103,16 @@ def generate_grid_tiles(boundary_geojson: dict[str, Any], tile_size_m: int = 500
     while x < max_x:
         y = start_y
         while y < max_y:
-            clipped = box(x, y, x + tile_size_m, y + tile_size_m).intersection(boundary)
-            if not clipped.is_empty and clipped.area > 0:
-                tile_id = f"KA-{tile_size_m}m-{int(x // tile_size_m)}-{int(y // tile_size_m)}"
-                tiles.append({"tile_id": tile_id, "geometry": mapping(transform(to_wgs84, clipped))})
+            cell = box(x, y, x + tile_size_m, y + tile_size_m)
+            if prepared.intersects(cell):
+                clipped = polygonal_geometry(cell.intersection(boundary))
+                if clipped is not None and clipped.area > 0:
+                    if len(tiles) >= max_tiles:
+                        raise ValueError(
+                            f"Grid exceeds {max_tiles} tiles; reduce the region or increase tile_size_m."
+                        )
+                    tile_id = f"{tile_prefix}-{tile_size_m}m-{int(x // tile_size_m)}-{int(y // tile_size_m)}"
+                    tiles.append({"tile_id": tile_id, "geometry": mapping(transform(to_wgs84, clipped))})
             y += tile_size_m
         x += tile_size_m
     return tiles

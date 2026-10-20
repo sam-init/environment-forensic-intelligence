@@ -11,9 +11,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.services.earth_engine import (
     get_before_after_comparison,
+    get_belagavi_overview,
     get_date_scene_tile,
     get_ee_tile_url,
-    get_karnataka_overview,
     get_site_stats,
     is_ee_available,
 )
@@ -41,14 +41,14 @@ async def ee_status() -> dict:
 # ── Karnataka Overview ────────────────────────────────────────────────────────
 
 @router.get("/overview")
-async def karnataka_overview() -> dict[str, Any]:
+async def belagavi_overview() -> dict[str, Any]:
     """
-    Return Sentinel-2 tile URLs and scene count for the full Karnataka AOI.
+    Return Sentinel-2 tile URLs and scene count for the Belagavi district AOI.
     Includes true-colour, NDVI, NDWI, and BSI tile sets with bicubic resampling.
     """
     _require_ee()
     try:
-        return await get_karnataka_overview()
+        return await get_belagavi_overview()
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

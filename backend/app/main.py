@@ -2,7 +2,7 @@
 EFI Backend — FastAPI Application Entry Point
 
 Environmental Forensic Intelligence Platform
-Target geography: India (Karnataka primary demo site)
+Target geography: India (Belagavi district, Karnataka primary demo site)
 Architecture: Extensible to other geographies.
 """
 from __future__ import annotations

@@ -30,9 +30,9 @@ EE_PROJECT = "forensic-intelligence-511405"
 # Sentinel-2 Surface Reflectance (harmonised)
 S2_COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
 
-# Default focus area — Karnataka mining hotspots (Hubli-Dharwad area)
+# Default focus area — Belagavi district, Karnataka
 # Used only for scene FILTERING, never for clipping tiles
-_DEFAULT_FILTER_COORDS = [75.5, 14.0, 76.5, 15.5]  # ~150km × 150km
+_DEFAULT_FILTER_COORDS = [73.9, 15.2, 75.6, 16.7]  # ~170km × 170km
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Initialisation
@@ -128,15 +128,21 @@ def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
     return ee.Geometry(geojson)
 
 
-def get_karnataka_boundary() -> dict[str, Any]:
-    """Return Karnataka's administrative boundary from GEE's GAUL collection."""
-    collection = ee.FeatureCollection("FAO/GAUL/2015/level1")
-    feature = collection.filter(ee.Filter.eq("ADM0_NAME", "India")).filter(
+def get_belagavi_boundary() -> dict[str, Any]:
+    """Return Belagavi district's administrative boundary from GEE's GAUL collection.
+
+    GAUL 2015 predates the Belgaum -> Belagavi rename, so both spellings are
+    accepted. The district outline is the only area the 1 km grid is built on.
+    """
+    collection = ee.FeatureCollection("FAO/GAUL/2015/level2")
+    districts = collection.filter(ee.Filter.eq("ADM0_NAME", "India")).filter(
         ee.Filter.eq("ADM1_NAME", "Karnataka")
-    ).first()
-    geometry = feature.geometry().getInfo()
+    ).filter(ee.Filter.inList("ADM2_NAME", ["Belagavi", "Belgaum"]))
+    if districts.size().getInfo() == 0:
+        raise RuntimeError("Belagavi district was not found in the Earth Engine GAUL level-2 collection.")
+    geometry = districts.geometry().getInfo()
     if not geometry:
-        raise RuntimeError("Karnataka boundary was not found in the Earth Engine GAUL collection.")
+        raise RuntimeError("Belagavi district boundary is empty in the Earth Engine GAUL collection.")
     return geometry
 
 
@@ -517,15 +523,15 @@ async def get_site_stats(
     return await asyncio.get_event_loop().run_in_executor(None, _fetch)
 
 
-async def get_karnataka_overview() -> dict[str, Any]:
+async def get_belagavi_overview() -> dict[str, Any]:
     """
-    Return tile URLs for all key visualisations over the Karnataka mining hotspot area,
+    Return tile URLs for all key visualisations over Belagavi district,
     plus a recent scene count.
 
     Tiles are NOT clipped — sharp at any zoom level, exactly like GEE Code Editor.
     """
     def _fetch():
-        # Filter area: Hubli-Dharwad mining belt (tight AOI for best scene selection)
+        # Filter area: Belagavi district (AOI for best scene selection)
         filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
         start, end = _date_range(60)
 

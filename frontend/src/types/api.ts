@@ -202,3 +202,34 @@ export interface EECompareResult {
   source: string;
 }
 
+// ── Belagavi 1 km processing grid ─────────────────────────────────────────────
+
+export interface GridGenerateResponse {
+  region: string;
+  boundary_source: string;
+  tile_size_m: number;
+  tile_count: number;
+  inserted: number;
+}
+
+export interface GridTileProperties {
+  tile_id: string;
+  tile_size_m: number;
+  status: string;
+  last_processed_at: string | null;
+}
+
+export interface GridTileFeature {
+  type: 'Feature';
+  properties: GridTileProperties;
+  geometry: GeoJSONGeometry;
+}
+
+export interface GridTileCollection {
+  type: 'FeatureCollection';
+  total: number;
+  returned: number;
+  tile_size_m: number | null;
+  features: GridTileFeature[];
+}
+

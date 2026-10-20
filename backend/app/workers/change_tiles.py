@@ -10,13 +10,15 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models import ChangeCandidate, Job, JobStatus, ProcessingTile
-from app.services.change_detection import ComparisonPeriod
+from app.services.change_detection import ComparisonPeriod, polygonal_geometry
 from app.services.earth_engine import detect_single_tile_change
 
 
-def _multi(geojson: dict):
-    value = shape(geojson)
-    return MultiPolygon([value]) if value.geom_type == "Polygon" else value
+def _multi(geojson: dict) -> MultiPolygon:
+    value = polygonal_geometry(shape(geojson))
+    if value is None:
+        raise ValueError("Candidate geometry contains no polygonal area.")
+    return value
 
 
 async def process_change_tile_job(ctx: dict, job_id: str, tile_id: str, before_start: str, before_end: str, after_start: str, after_end: str, thresholds: dict, signature: str) -> None:

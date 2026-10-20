@@ -7,22 +7,23 @@ try:
 
     print("Earth Engine initialized successfully!")
 
-    # Load Karnataka's administrative boundary.
-    states = ee.FeatureCollection("FAO/GAUL/2015/level1")
+    # Load Belagavi district's administrative boundary.
+    districts = ee.FeatureCollection("FAO/GAUL/2015/level2")
 
-    karnataka = states.filter(
+    belagavi = districts.filter(
         ee.Filter.And(
             ee.Filter.eq("ADM0_NAME", "India"),
-            ee.Filter.eq("ADM1_NAME", "Karnataka")
+            ee.Filter.eq("ADM1_NAME", "Karnataka"),
+            ee.Filter.inList("ADM2_NAME", ["Belagavi", "Belgaum"]),
         )
     )
 
-    print("Karnataka boundary count:", karnataka.size().getInfo())
+    print("Belagavi boundary features:", belagavi.size().getInfo())
 
     # Check Sentinel-2 data availability.
     images = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-        .filterBounds(karnataka.geometry())
+        .filterBounds(belagavi.geometry())
         .filterDate("2025-01-01", "2025-02-01")
         .limit(5)
     )

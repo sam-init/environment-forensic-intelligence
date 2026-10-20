@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Satellite, RefreshCw } from 'lucide-react';
 import { api } from '../utils/api';
-import type { ForensicEvent, EventListResponse, SystemStatus } from '../types/api';
+import type { ForensicEvent, EventListResponse, SystemStatus, GridTileCollection } from '../types/api';
 import { SignalCard } from '../components/SignalCard';
 import { EFIMap } from '../components/EFIMap';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { EmptyState } from '../components/EmptyState';
 import { EarthEnginePanel, type EELayer, type CompareState } from '../components/EarthEnginePanel';
+import { GridPanel } from '../components/GridPanel';
 
 export function DashboardPage() {
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
@@ -21,7 +22,22 @@ export function DashboardPage() {
     beforeTileUrl: null,
     afterTileUrl: null,
   });
+  const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
+  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+  const [gridFocus, setGridFocus] = useState<{ center: [number, number]; zoom: number; nonce: number } | null>(null);
   const queryClient = useQueryClient();
+
+  const handleGridTiles = useCallback((tiles: GridTileCollection | null) => {
+    setGridTiles(tiles);
+  }, []);
+
+  const handleGridFocus = useCallback(() => {
+    setGridFocus((prev) => ({
+      center: [74.5, 15.85],
+      zoom: 9.5,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }));
+  }, []);
 
   // System status
   const { data: status } = useQuery<SystemStatus>({
@@ -113,7 +129,7 @@ export function DashboardPage() {
             </div>
           </div>
           <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-            {status?.sites_monitored ?? 0} sites monitored · Karnataka, India
+            {status?.sites_monitored ?? 0} sites monitored · Belagavi, Karnataka
           </div>
           {/* EE status badge */}
           <div style={{
@@ -141,6 +157,16 @@ export function DashboardPage() {
           </div>
         )}
 
+        {/* Belagavi 1 km review grid */}
+        <div className="panel-section" style={{ paddingTop: 0 }}>
+          <GridPanel
+            onTilesLoaded={handleGridTiles}
+            onFocus={handleGridFocus}
+            selectedTileId={selectedTileId}
+            onClearSelection={() => setSelectedTileId(null)}
+          />
+        </div>
+
         {/* Events List */}
         <div className="events-list">
           {isLoading && (
@@ -165,7 +191,7 @@ export function DashboardPage() {
           {!isLoading && !isError && events.length === 0 && (
             <EmptyState
               title="No active signals"
-              body="All monitored sites in Karnataka are within baseline parameters."
+              body="All monitored sites in Belagavi are within baseline parameters."
             />
           )}
 
@@ -195,6 +221,10 @@ export function DashboardPage() {
           afterTileUrl={compareState.afterTileUrl}
           beforeLabel={compareState.beforeLabel}
           afterLabel={compareState.afterLabel}
+          gridTiles={gridTiles}
+          selectedTileId={selectedTileId}
+          onTileSelect={setSelectedTileId}
+          focus={gridFocus}
         />
 
         {/* Attribution notice */}

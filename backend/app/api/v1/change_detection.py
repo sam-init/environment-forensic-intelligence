@@ -5,47 +5,132 @@ import asyncio
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import MultiPolygon, shape
-from sqlalchemy import or_, select
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.earth_engine import _require_ee
 from app.core.database import get_db
 from app.models import ChangeCandidate, Job, JobStatus, JobType, ProcessingTile
 from app.schemas.schemas import GenerateTileGridRequest, QueueTileRunRequest, SingleTileChangeRequest
-from app.services.change_detection import ComparisonPeriod, generate_grid_tiles, processing_signature
-from app.services.earth_engine import detect_single_tile_change, get_karnataka_boundary
+from app.services.change_detection import (
+    ComparisonPeriod,
+    generate_grid_tiles,
+    polygonal_geometry,
+    processing_signature,
+)
+from app.services.earth_engine import detect_single_tile_change, get_belagavi_boundary
 
 router = APIRouter(prefix="/change-detection", tags=["Tile Change Detection"])
 
 
-def _as_multipolygon(geojson: dict):
-    geometry = shape(geojson)
-    return MultiPolygon([geometry]) if geometry.geom_type == "Polygon" else geometry
+def _as_multipolygon(geojson: dict) -> MultiPolygon:
+    geometry = polygonal_geometry(shape(geojson))
+    if geometry is None:
+        raise ValueError("Geometry contains no polygonal area.")
+    return geometry
 
 
 @router.post("/tiles/generate")
-async def generate_karnataka_grid(
+async def generate_belagavi_grid(
     payload: GenerateTileGridRequest,
     db: Annotated[AsyncSession | None, Depends(get_db)],
 ) -> dict:
-    """Fetch the GEE Karnataka boundary and persist an intersected metric grid."""
+    """Fetch the GEE Belagavi district boundary and persist an intersected 1 km grid."""
     _require_ee()
     if db is None:
         raise HTTPException(status_code=503, detail="PostGIS is required to persist processing tiles.")
-    boundary = await asyncio.get_running_loop().run_in_executor(None, get_karnataka_boundary)
-    tiles = generate_grid_tiles(boundary, payload.tile_size_m)
-    inserted = 0
-    for tile in tiles:
-        existing = (await db.execute(select(ProcessingTile).where(ProcessingTile.tile_id == tile["tile_id"]))).scalar_one_or_none()
-        if existing:
-            continue
-        db.add(ProcessingTile(tile_id=tile["tile_id"], geometry=from_shape(_as_multipolygon(tile["geometry"]), srid=4326), tile_size_m=payload.tile_size_m, processing_log=[{"at": datetime.utcnow().isoformat(), "message": "Grid generated from GEE GAUL Karnataka boundary"}]))
-        inserted += 1
-    await db.flush()
-    return {"boundary_source": "FAO/GAUL/2015/level1 via Google Earth Engine", "tile_size_m": payload.tile_size_m, "tile_count": len(tiles), "inserted": inserted}
+    boundary = await asyncio.get_running_loop().run_in_executor(None, get_belagavi_boundary)
+    try:
+        tiles = await asyncio.get_running_loop().run_in_executor(
+            None, generate_grid_tiles, boundary, payload.tile_size_m
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    existing = set(
+        (
+            await db.execute(
+                select(ProcessingTile.tile_id).where(ProcessingTile.tile_size_m == payload.tile_size_m)
+            )
+        ).scalars().all()
+    )
+    now = datetime.utcnow().isoformat()
+    rows = [
+        {
+            "tile_id": tile["tile_id"],
+            "geometry": from_shape(_as_multipolygon(tile["geometry"]), srid=4326),
+            "tile_size_m": payload.tile_size_m,
+            "processing_log": [{"at": now, "message": "Grid generated from GEE GAUL level-2 Belagavi boundary"}],
+        }
+        for tile in tiles
+        if tile["tile_id"] not in existing
+    ]
+    if rows:
+        await db.execute(insert(ProcessingTile), rows)
+    await db.commit()
+    return {
+        "region": "Belagavi, Karnataka",
+        "boundary_source": "FAO/GAUL/2015/level2 via Google Earth Engine",
+        "tile_size_m": payload.tile_size_m,
+        "tile_count": len(tiles),
+        "inserted": len(rows),
+    }
+
+
+@router.get("/tiles")
+async def list_processing_tiles(
+    db: Annotated[AsyncSession | None, Depends(get_db)],
+    tile_size_m: int | None = Query(default=None, ge=250, le=20_000),
+    min_lon: float | None = Query(default=None, ge=-180, le=180),
+    min_lat: float | None = Query(default=None, ge=-90, le=90),
+    max_lon: float | None = Query(default=None, ge=-180, le=180),
+    max_lat: float | None = Query(default=None, ge=-90, le=90),
+    limit: int = Query(default=20_000, ge=1, le=50_000),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    """List persisted processing tiles as a GeoJSON FeatureCollection."""
+    if db is None:
+        return {"type": "FeatureCollection", "total": 0, "returned": 0, "features": []}
+    filters = []
+    if tile_size_m is not None:
+        filters.append(ProcessingTile.tile_size_m == tile_size_m)
+    if all(v is not None for v in [min_lon, min_lat, max_lon, max_lat]):
+        envelope = func.ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)
+        filters.append(ProcessingTile.geometry.ST_Intersects(envelope))
+    total = (
+        await db.execute(select(func.count()).select_from(ProcessingTile).where(*filters))
+    ).scalar_one()
+    rows = (
+        await db.execute(
+            select(ProcessingTile)
+            .where(*filters)
+            .order_by(ProcessingTile.tile_id)
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+    return {
+        "type": "FeatureCollection",
+        "total": total,
+        "returned": len(rows),
+        "tile_size_m": tile_size_m,
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "tile_id": row.tile_id,
+                    "tile_size_m": row.tile_size_m,
+                    "status": row.status,
+                    "last_processed_at": row.last_processed_at.isoformat() if row.last_processed_at else None,
+                },
+                "geometry": to_shape(row.geometry).__geo_interface__,
+            }
+            for row in rows
+        ],
+    }
 
 
 @router.post("/tiles/{tile_id}/prototype")

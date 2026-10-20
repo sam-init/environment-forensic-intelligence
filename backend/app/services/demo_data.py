@@ -1,5 +1,5 @@
 """
-Demo data seeder for Karnataka, India.
+Demo data seeder for Belagavi district, Karnataka, India.
 Seeds clearly marked DEMO DATA — NOT real environmental incidents.
 All records are flagged is_demo=True and labeled [DEMO DATA] in all relevant fields.
 
@@ -25,37 +25,37 @@ from app.models import (
 )
 
 
-# ── Karnataka Demo AOIs ────────────────────────────────────────────────────────
-# These are representative areas in Karnataka used only for demo purposes.
-# Coordinates chosen to represent river valleys and mining-sensitive zones.
+# ── Belagavi Demo AOIs ─────────────────────────────────────────────────────────
+# These are representative areas inside Belagavi district used only for demo purposes.
+# Coordinates are chosen along river valleys and disturbance-sensitive zones.
 
 DEMO_SITES = [
     {
-        "name": "[DEMO] Tungabhadra River Watch — Hospet",
-        "description": "[DEMO DATA] Synthetic monitoring site on the Tungabhadra river near Hospet, Karnataka. Not a real active monitoring station.",
+        "name": "[DEMO] Ghataprabha River Watch — Gokak",
+        "description": "[DEMO DATA] Synthetic monitoring site on the Ghataprabha river near Gokak, Belagavi district. Not a real active monitoring station.",
         "geometry": {
             "type": "Polygon",
-            "coordinates": [[[76.38, 15.26], [76.44, 15.26], [76.44, 15.31], [76.38, 15.31], [76.38, 15.26]]]
+            "coordinates": [[[74.825, 16.155], [74.845, 16.155], [74.845, 16.175], [74.825, 16.175], [74.825, 16.155]]]
         },
-        "area_ha": 330.0,
+        "area_ha": 440.0,
     },
     {
-        "name": "[DEMO] Cauvery River — Mandya District",
-        "description": "[DEMO DATA] Synthetic monitoring site on the Cauvery river near Mandya. Not a real active monitoring station.",
+        "name": "[DEMO] Malaprabha River — Bailhongal",
+        "description": "[DEMO DATA] Synthetic monitoring site on the Malaprabha river near Bailhongal, Belagavi district. Not a real active monitoring station.",
         "geometry": {
             "type": "Polygon",
-            "coordinates": [[[76.82, 12.52], [76.88, 12.52], [76.88, 12.57], [76.82, 12.57], [76.82, 12.52]]]
+            "coordinates": [[[74.855, 15.805], [74.875, 15.805], [74.875, 15.825], [74.855, 15.825], [74.855, 15.805]]]
         },
-        "area_ha": 280.0,
+        "area_ha": 440.0,
     },
     {
-        "name": "[DEMO] Ballari Mining Zone",
-        "description": "[DEMO DATA] Synthetic monitoring site near Ballari (Bellary) iron ore district. Not a real active monitoring station.",
+        "name": "[DEMO] Krishna River — Chikkodi",
+        "description": "[DEMO DATA] Synthetic monitoring site on the Krishna river near Chikkodi, Belagavi district. Not a real active monitoring station.",
         "geometry": {
             "type": "Polygon",
-            "coordinates": [[[76.92, 15.13], [76.98, 15.13], [76.98, 15.18], [76.92, 15.18], [76.92, 15.13]]]
+            "coordinates": [[[74.415, 16.415], [74.435, 16.415], [74.435, 16.435], [74.415, 16.435], [74.415, 16.415]]]
         },
-        "area_ha": 290.0,
+        "area_ha": 440.0,
     },
 ]
 
@@ -99,8 +99,8 @@ DEMO_EVENTS = [
         "last_observed_offset_days": -5,
         "observation_count": 3,
         "site_index": 0,
-        # Polygon near Hospet on Tungabhadra
-        "geometry_wkt": "MULTIPOLYGON(((76.3920 15.2750, 76.3950 15.2750, 76.3950 15.2780, 76.3920 15.2780, 76.3920 15.2750)))",
+        # Polygon near Gokak on the Ghataprabha
+        "geometry_wkt": "MULTIPOLYGON(((74.8350 16.1650, 74.8380 16.1650, 74.8380 16.1680, 74.8350 16.1680, 74.8350 16.1650)))",
     },
     {
         "event_id": "ENV-DEMO-000002",
@@ -138,8 +138,8 @@ DEMO_EVENTS = [
         "last_observed_offset_days": -10,
         "observation_count": 2,
         "site_index": 2,
-        # Polygon near Ballari
-        "geometry_wkt": "MULTIPOLYGON(((76.9350 15.1450, 76.9400 15.1450, 76.9400 15.1490, 76.9350 15.1490, 76.9350 15.1450)))",
+        # Polygon near Chikkodi on the Krishna
+        "geometry_wkt": "MULTIPOLYGON(((74.4240 16.4240, 74.4270 16.4240, 74.4270 16.4270, 74.4240 16.4270, 74.4240 16.4240)))",
     },
     {
         "event_id": "ENV-DEMO-000003",
@@ -176,15 +176,15 @@ DEMO_EVENTS = [
         "last_observed_offset_days": -15,
         "observation_count": 1,
         "site_index": 1,
-        # Polygon near Cauvery/Mandya
-        "geometry_wkt": "MULTIPOLYGON(((76.8350 12.5350, 76.8400 12.5350, 76.8400 12.5380, 76.8350 12.5380, 76.8350 12.5350)))",
+        # Polygon near Bailhongal on the Malaprabha
+        "geometry_wkt": "MULTIPOLYGON(((74.8640 15.8140, 74.8670 15.8140, 74.8670 15.8170, 74.8640 15.8170, 74.8640 15.8140)))",
     },
 ]
 
 
-async def seed_karnataka_demo(db: AsyncSession) -> dict:
+async def seed_belagavi_demo(db: AsyncSession) -> dict:
     """
-    Insert Karnataka demo sites, observations, and events.
+    Insert Belagavi demo sites, observations, and events.
     Idempotent — skips records that already exist.
     Returns a summary of what was inserted.
     """

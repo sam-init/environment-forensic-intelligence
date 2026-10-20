@@ -186,8 +186,8 @@ async def seed_demo_data(
         return {"status": "seeded", "summary": {"sites": 3, "observations": 9, "events": 3, "mode": "in-memory-demo"}}
 
     try:
-        from app.services.demo_data import seed_karnataka_demo
-        result = await seed_karnataka_demo(db)
+        from app.services.demo_data import seed_belagavi_demo
+        result = await seed_belagavi_demo(db)
         return {"status": "seeded", "summary": result}
     except Exception:
         return {"status": "seeded", "summary": {"sites": 3, "observations": 9, "events": 3, "mode": "in-memory-demo"}}

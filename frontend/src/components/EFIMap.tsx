@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import type { ForensicEvent } from '../types/api';
+import type { ForensicEvent, GridTileCollection } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
 
@@ -18,10 +18,22 @@ interface EFIMapProps {
   afterTileUrl?: string | null;
   beforeLabel?: string;
   afterLabel?: string;
+  // Belagavi 1 km processing grid
+  gridTiles?: GridTileCollection | null;
+  selectedTileId?: string | null;
+  onTileSelect?: (tileId: string) => void;
+  focus?: { center: [number, number]; zoom: number; nonce: number } | null;
 }
 
-const DEFAULT_CENTER: [number, number] = [76.5, 14.5];
-const DEFAULT_ZOOM = 7;
+// Belagavi district centre
+const DEFAULT_CENTER: [number, number] = [74.5, 15.85];
+const DEFAULT_ZOOM = 9;
+
+type GridEventHandlers = {
+  click: (event: maplibregl.MapMouseEvent) => void;
+  move: (event: maplibregl.MapMouseEvent) => void;
+};
+const gridHandlersByMap = new WeakMap<maplibregl.Map, GridEventHandlers>();
 
 const OSM_SOURCE = {
   type: 'raster' as const,
@@ -54,6 +66,10 @@ export function EFIMap({
   afterTileUrl = null,
   beforeLabel = 'Before',
   afterLabel = 'After',
+  gridTiles = null,
+  selectedTileId = null,
+  onTileSelect,
+  focus = null,
 }: EFIMapProps) {
   // Single map refs
   const singleMapContainer = useRef<HTMLDivElement>(null);
@@ -194,6 +210,23 @@ export function EFIMap({
     const coords = getFirstCoordinate(event.geometry);
     if (coords) map.flyTo({ center: coords, zoom: 14, duration: 1200 });
   }, [compareMode, selectedEventId, singleMapReady]);
+
+  // Single Map fly to the Belagavi grid after it is generated
+  useEffect(() => {
+    if (compareMode) return;
+    const map = singleMapRef.current;
+    if (!map || !singleMapReady || !focus) return;
+    map.flyTo({ center: focus.center, zoom: focus.zoom, duration: 1400 });
+  }, [compareMode, focus, singleMapReady]);
+
+  // Single Map 1 km processing grid overlay
+  useEffect(() => {
+    if (compareMode) return;
+    const map = singleMapRef.current;
+    if (!map || !singleMapReady) return;
+
+    renderGridLayers(map, gridTiles, selectedTileId, onTileSelect);
+  }, [compareMode, gridTiles, selectedTileId, singleMapReady, onTileSelect]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   //  2. Initialize Compare Dual Maps (when in compareMode)
@@ -380,6 +413,84 @@ export function EFIMap({
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function renderGridLayers(
+  map: maplibregl.Map,
+  tiles: GridTileCollection | null,
+  selectedTileId: string | null,
+  onTileSelect?: (tileId: string) => void,
+) {
+  const sourceId = 'efi-grid';
+  const fillLayer = 'efi-grid-fill';
+  const lineLayer = 'efi-grid-line';
+
+  const previousHandlers = gridHandlersByMap.get(map);
+  if (previousHandlers) {
+    map.off('click', previousHandlers.click);
+    map.off('mousemove', previousHandlers.move);
+    gridHandlersByMap.delete(map);
+  }
+  if (map.getLayer(fillLayer)) map.removeLayer(fillLayer);
+  if (map.getLayer(lineLayer)) map.removeLayer(lineLayer);
+  if (map.getSource(sourceId)) map.removeSource(sourceId);
+
+  if (!tiles || tiles.features.length === 0) return;
+
+  map.addSource(sourceId, {
+    type: 'geojson',
+    data: tiles as unknown as GeoJSON.FeatureCollection,
+  });
+
+  const beforeLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+  const selectedId = selectedTileId ?? '';
+
+  map.addLayer(
+    {
+      id: fillLayer,
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': '#22d3ee',
+        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.18, 0.02],
+      },
+    },
+    beforeLayer,
+  );
+
+  map.addLayer(
+    {
+      id: lineLayer,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(34,211,238,0.55)'],
+        'line-width': ['case', ['==', ['get', 'tile_id'], selectedId], 2.4, 0.6],
+        'line-opacity': 0.9,
+      },
+    },
+    beforeLayer,
+  );
+
+  const click = (event: maplibregl.MapMouseEvent) => {
+    if (
+      map.getLayer('efi-events-fill') &&
+      map.queryRenderedFeatures(event.point, { layers: ['efi-events-fill'] }).length > 0
+    ) {
+      return;
+    }
+    const tileId = map.queryRenderedFeatures(event.point, { layers: [fillLayer] })[0]
+      ?.properties?.tile_id;
+    if (typeof tileId === 'string') onTileSelect?.(tileId);
+  };
+  const move = (event: maplibregl.MapMouseEvent) => {
+    const overGrid =
+      map.queryRenderedFeatures(event.point, { layers: [fillLayer] }).length > 0;
+    map.getCanvas().style.cursor = overGrid ? 'pointer' : '';
+  };
+  map.on('click', click);
+  map.on('mousemove', move);
+  gridHandlersByMap.set(map, { click, move });
+}
 
 function renderEventLayers(
   map: maplibregl.Map,

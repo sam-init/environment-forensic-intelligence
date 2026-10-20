@@ -77,8 +77,8 @@ This document lists all satellite imagery, vector, and geospatial datasets used 
 
 ## 3. Demo / Synthetic Datasets
 
-### Karnataka Synthetic Demo Dataset
-- **Scope**: Synthetic monitoring sites in Ballari, Mandya, and Hospet (Tungabhadra River)
+### Belagavi Synthetic Demo Dataset
+- **Scope**: Synthetic monitoring sites on the Ghataprabha (Gokak), Malaprabha (Bailhongal), and Krishna (Chikkodi) rivers
 - **Flag**: `is_demo = true`
 - **Purpose**: UI demonstration and integration testing without requiring Copernicus API credentials.
 - **Disclaimer**: Synthetic records for demonstration only. Not actual detected incidents.

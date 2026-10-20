@@ -2,7 +2,7 @@
 
 > **India Earth Observation Monitoring — Sand Mining, Land Mining & Land Filling Detection**
 
-A production-quality research prototype for detecting potential sand mining, land excavation, and land filling using free satellite data (Sentinel-2, Sentinel-1, Landsat). Built for India with Karnataka as the primary demonstration geography.
+A production-quality research prototype for detecting potential sand mining, land excavation, and land filling using free satellite data (Sentinel-2, Sentinel-1, Landsat). Built for India with **Belagavi district, Karnataka** as the primary demonstration geography. Belagavi is subdivided into a fixed **1 km × 1 km grid**; each cell is an independent review unit for imagery and model inspection.
 
 ---
 
@@ -11,7 +11,7 @@ A production-quality research prototype for detecting potential sand mining, lan
 - This system provides **remote-sensing intelligence** and does **not** constitute a legal determination of unauthorized or illegal activity.
 - All detected events require **human expert verification** before any regulatory action.
 - The system uses probabilistic language: "Potential sand extraction", "Suspicious environmental disturbance", "High-risk disturbance" — NOT "illegal mining".
-- Demo mode ships with **synthetic Karnataka data** that does NOT represent real environmental incidents.
+- Demo mode ships with **synthetic Belagavi data** that does NOT represent real environmental incidents.
 
 ---
 
@@ -163,6 +163,9 @@ Key endpoints:
 | GET | `/api/v1/events/{id}` | Get event detail |
 | POST | `/api/v1/events/{id}/review` | Submit analyst review |
 | GET | `/api/v1/observations` | List satellite observations |
+| POST | `/api/v1/change-detection/tiles/generate` | Build the Belagavi 1 km grid from GEE |
+| GET | `/api/v1/change-detection/tiles` | List stored grid cells as GeoJSON |
+| POST | `/api/v1/change-detection/tiles/{tile_id}/prototype` | Process one cell |
 | GET | `/health` | Liveness check |
 | GET | `/ready` | Readiness check (verifies DB + PostGIS + Redis) |
 | POST | `/api/v1/demo/seed` | Seed demo data (demo mode only) |

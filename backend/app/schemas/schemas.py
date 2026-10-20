@@ -204,7 +204,7 @@ class ChangePeriodRequest(BaseModel):
 
 
 class GenerateTileGridRequest(BaseModel):
-    tile_size_m: int = Field(default=5000, ge=1000, le=20_000)
+    tile_size_m: int = Field(default=1000, ge=250, le=10_000)
 
 
 class SingleTileChangeRequest(BaseModel):

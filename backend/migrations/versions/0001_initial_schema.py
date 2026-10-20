@@ -20,10 +20,10 @@ def upgrade() -> None:
     # ── sites ──────────────────────────────────────────────────────────────────
     op.create_table(
         "sites",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text()),
-        sa.Column("geometry", Geometry("POLYGON", srid=4326), nullable=False),
+        sa.Column("geometry", Geometry("POLYGON", srid=4326, spatial_index=False), nullable=False),
         sa.Column("area_ha", sa.Float()),
         sa.Column("status", sa.String(50), default="active"),
         sa.Column("is_demo", sa.Boolean(), default=False),
@@ -43,8 +43,8 @@ def upgrade() -> None:
     # ── observations ───────────────────────────────────────────────────────────
     op.create_table(
         "observations",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("site_id", sa.String(36), sa.ForeignKey("sites.id"), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("site_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("sites.id"), nullable=False),
         sa.Column("provider", sa.String(50), nullable=False),
         sa.Column("collection", sa.String(100), nullable=False),
         sa.Column("scene_id", sa.String(255), nullable=False),
@@ -58,7 +58,7 @@ def upgrade() -> None:
         sa.Column("error_message", sa.Text()),
         sa.Column("raw_path", sa.Text()),
         sa.Column("processed_path", sa.Text()),
-        sa.Column("metadata", postgresql.JSONB()),
+        sa.Column("provider_metadata", postgresql.JSONB()),
         sa.Column("preprocessing_version", sa.String(50)),
         sa.Column("is_demo", sa.Boolean(), default=False),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
@@ -73,8 +73,8 @@ def upgrade() -> None:
     # ── observation_features ───────────────────────────────────────────────────
     op.create_table(
         "observation_features",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("observation_id", sa.String(36), sa.ForeignKey("observations.id"), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("observation_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("observations.id"), nullable=False),
         sa.Column("feature_name", sa.String(100), nullable=False),
         sa.Column("raster_path", sa.Text()),
         sa.Column("stats", postgresql.JSONB()),
@@ -86,15 +86,15 @@ def upgrade() -> None:
     # ── events ─────────────────────────────────────────────────────────────────
     op.create_table(
         "events",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("event_id", sa.String(50), unique=True, nullable=False),
-        sa.Column("site_id", sa.String(36), sa.ForeignKey("sites.id"), nullable=False),
+        sa.Column("site_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("sites.id"), nullable=False),
         sa.Column("category", sa.String(100), default="unknown"),
         sa.Column("status", sa.String(50), default="unreviewed"),
         sa.Column("first_observed", sa.DateTime()),
         sa.Column("last_observed", sa.DateTime()),
         sa.Column("observation_count", sa.Integer(), default=1),
-        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326)),
+        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326, spatial_index=False)),
         sa.Column("area_ha", sa.Float()),
         sa.Column("perimeter_m", sa.Float()),
         sa.Column("risk_score", sa.Integer()),
@@ -127,9 +127,9 @@ def upgrade() -> None:
     # ── event_observations ──────────────────────────────────────────────────────
     op.create_table(
         "event_observations",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("event_id", sa.String(36), sa.ForeignKey("events.id"), nullable=False),
-        sa.Column("observation_id", sa.String(36), sa.ForeignKey("observations.id"), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("event_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("events.id"), nullable=False),
+        sa.Column("observation_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("observations.id"), nullable=False),
         sa.Column("role", sa.String(20)),
     )
     op.create_unique_constraint("uq_event_observation", "event_observations", ["event_id", "observation_id"])
@@ -138,8 +138,8 @@ def upgrade() -> None:
     # ── risk_calculations ──────────────────────────────────────────────────────
     op.create_table(
         "risk_calculations",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("event_id", sa.String(36), sa.ForeignKey("events.id"), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("event_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("events.id"), nullable=False),
         sa.Column("weights_version", sa.String(50), nullable=False),
         sa.Column("factors", postgresql.JSONB(), nullable=False),
         sa.Column("score", sa.Integer(), nullable=False),
@@ -149,8 +149,8 @@ def upgrade() -> None:
     # ── reviews ────────────────────────────────────────────────────────────────
     op.create_table(
         "reviews",
-        sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("event_id", sa.String(36), sa.ForeignKey("events.id"), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("event_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("events.id"), nullable=False),
         sa.Column("reviewer", sa.String(255), nullable=False),
         sa.Column("status", sa.String(50), nullable=False),
         sa.Column("notes", sa.Text()),
@@ -161,9 +161,9 @@ def upgrade() -> None:
     # ── jobs ───────────────────────────────────────────────────────────────────
     op.create_table(
         "jobs",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("job_type", sa.String(50), nullable=False),
-        sa.Column("site_id", sa.String(36), sa.ForeignKey("sites.id")),
+        sa.Column("site_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("sites.id")),
         sa.Column("status", sa.String(20), default="pending"),
         sa.Column("params", postgresql.JSONB()),
         sa.Column("result", postgresql.JSONB()),
@@ -181,7 +181,7 @@ def upgrade() -> None:
     # ── audit_log ──────────────────────────────────────────────────────────────
     op.create_table(
         "audit_log",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("user_id", sa.String(255)),
         sa.Column("action", sa.String(100), nullable=False),
         sa.Column("target_type", sa.String(100), nullable=False),
@@ -197,7 +197,7 @@ def upgrade() -> None:
     # ── data_sources ──────────────────────────────────────────────────────────
     op.create_table(
         "data_sources",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("name", sa.String(255), unique=True, nullable=False),
         sa.Column("provider", sa.String(255), nullable=False),
         sa.Column("license", sa.String(255)),
@@ -208,7 +208,7 @@ def upgrade() -> None:
         sa.Column("attribution_required", sa.Boolean(), default=True),
         sa.Column("redistribution_allowed", sa.Boolean()),
         sa.Column("ingestion_status", sa.String(50), default="NOT_INGESTED"),
-        sa.Column("metadata", postgresql.JSONB()),
+        sa.Column("source_metadata", postgresql.JSONB()),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
     )
@@ -216,7 +216,7 @@ def upgrade() -> None:
     # ── ml_models ─────────────────────────────────────────────────────────────
     op.create_table(
         "ml_models",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("model_id", sa.String(100), nullable=False),
         sa.Column("version", sa.String(50), nullable=False),
         sa.Column("architecture", sa.String(100), nullable=False),

@@ -1,7 +1,7 @@
 """Add persisted processing tiles and real satellite-derived candidates.
 
 Revision ID: 0002_tile_change_detection
-Revises: 0001_initial_schema
+Revises: 0001
 """
 from alembic import op
 import sqlalchemy as sa
@@ -9,7 +9,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy.dialects import postgresql
 
 revision = "0002_tile_change_detection"
-down_revision = "0001_initial_schema"
+down_revision = "0001"
 branch_labels = None
 depends_on = None
 
@@ -19,7 +19,7 @@ def upgrade() -> None:
         "processing_tiles",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("tile_id", sa.String(100), nullable=False, unique=True),
-        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326), nullable=False),
+        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False),
         sa.Column("tile_size_m", sa.Integer(), nullable=False, server_default="5000"),
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         sa.Column("last_input_signature", sa.String(64)),
@@ -37,7 +37,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("candidate_id", sa.String(100), nullable=False, unique=True),
         sa.Column("tile_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("processing_tiles.id"), nullable=False),
-        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326), nullable=False),
+        sa.Column("geometry", Geometry("MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False),
         sa.Column("area_ha", sa.Float(), nullable=False),
         sa.Column("before_start", sa.DateTime(), nullable=False), sa.Column("before_end", sa.DateTime(), nullable=False),
         sa.Column("after_start", sa.DateTime(), nullable=False), sa.Column("after_end", sa.DateTime(), nullable=False),

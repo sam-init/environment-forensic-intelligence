@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Satellite, RefreshCw } from 'lucide-react';
+import { Satellite, RefreshCw, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
 import type { ForensicEvent, EventListResponse, SystemStatus, GridTileCollection } from '../types/api';
 import { SignalCard } from '../components/SignalCard';
@@ -10,33 +10,38 @@ import { EmptyState } from '../components/EmptyState';
 import { EarthEnginePanel, type EELayer, type CompareState } from '../components/EarthEnginePanel';
 import { GridPanel } from '../components/GridPanel';
 
+/** Today's date as ISO string (YYYY-MM-DD) */
+function todayIso(): string {
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${m}-${d}`;
+}
+
+const INITIAL_COMPARE_STATE: CompareState = {
+  active: false,
+  beforeDate: '2020-02-15',
+  afterDate: todayIso(),
+  visType: 'true_color',
+  beforeTileUrl: null,
+  afterTileUrl: null,
+};
+
+const DEFAULT_MAP_VIEW = { center: [74.5, 15.85] as [number, number], zoom: 9 };
+
 export function DashboardPage() {
-  const todayIso = (() => {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${now.getFullYear()}-${month}-${day}`;
-  })();
+  const queryClient = useQueryClient();
+
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
   const [activeLayer, setActiveLayer] = useState<EELayer>('true_color');
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
-  const [compareState, setCompareState] = useState<CompareState>({
-    active: false,
-    beforeDate: '2020-02-15',
-    afterDate: todayIso,
-    visType: 'true_color',
-    beforeTileUrl: null,
-    afterTileUrl: null,
-  });
-  const [mapView, setMapView] = useState<{ center: [number, number]; zoom: number }>({
-    center: [74.5, 15.85],
-    zoom: 9,
-  });
+  const [compareState, setCompareState] = useState<CompareState>(INITIAL_COMPARE_STATE);
+  const [mapView, setMapView] = useState(DEFAULT_MAP_VIEW);
   const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [gridFocus, setGridFocus] = useState<{ center: [number, number]; zoom: number; nonce: number } | null>(null);
-  const queryClient = useQueryClient();
 
+  // Stable callbacks — prevent unnecessary child re-renders
   const handleGridTiles = useCallback((tiles: GridTileCollection | null) => {
     setGridTiles(tiles);
   }, []);
@@ -49,7 +54,13 @@ export function DashboardPage() {
     }));
   }, []);
 
-  // System status
+  const handleClearTileSelection = useCallback(() => setSelectedTileId(null), []);
+  const handleMapViewChange = useCallback(
+    (center: [number, number], zoom: number) => setMapView({ center, zoom }),
+    [],
+  );
+
+  // ── Queries ──
   const { data: status } = useQuery<SystemStatus>({
     queryKey: ['system-status'],
     queryFn: async () => {
@@ -60,8 +71,12 @@ export function DashboardPage() {
     staleTime: 20_000,
   });
 
-  // Events list
-  const { data: eventsData, isLoading, isError, refetch } = useQuery<EventListResponse>({
+  const {
+    data: eventsData,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<EventListResponse>({
     queryKey: ['events'],
     queryFn: async () => {
       const r = await api.get<EventListResponse>('/events');
@@ -71,7 +86,7 @@ export function DashboardPage() {
     staleTime: 30_000,
   });
 
-  // Review mutation
+  // ── Mutations ──
   const reviewMutation = useMutation({
     mutationFn: async ({ eventId, newStatus }: { eventId: string; newStatus: string }) => {
       await api.post(`/events/${eventId}/review`, {
@@ -84,11 +99,11 @@ export function DashboardPage() {
     },
   });
 
-  const events = eventsData?.items ?? [];
+  const events = useMemo(() => eventsData?.items ?? [], [eventsData]);
   const isDemoMode = status?.demo_mode ?? true;
   const eeAvailable = status?.earth_engine_available ?? false;
 
-  // Auto-seed demo data if in demo mode and no events loaded
+  // Auto-seed demo data if in demo mode and no events
   const { data: demoSeeded } = useQuery({
     queryKey: ['demo-seed'],
     queryFn: async () => {
@@ -100,16 +115,14 @@ export function DashboardPage() {
     staleTime: Infinity,
   });
 
-  // Refresh events after demo seed
   useEffect(() => {
     if (demoSeeded) {
-      setTimeout(() => refetch(), 500);
+      const timer = setTimeout(() => refetch(), 500);
+      return () => clearTimeout(timer);
     }
   }, [demoSeeded, refetch]);
 
   const signals = status?.active_signals ?? { critical: 0, high: 0, moderate: 0 };
-
-  // Geometry of selected event (for site-stats call)
   const selectedGeometry = selectedEvent?.geometry ?? null;
 
   function handleLayerChange(layer: EELayer, tileUrl?: string) {
@@ -117,40 +130,40 @@ export function DashboardPage() {
     setEeTileUrl(tileUrl ?? null);
   }
 
+  function handleReview(newStatus: string) {
+    if (!selectedEvent) return;
+    reviewMutation.mutate({ eventId: selectedEvent.event_id, newStatus });
+    // Optimistically update local state
+    setSelectedEvent({ ...selectedEvent, status: newStatus as ForensicEvent['status'] });
+  }
+
   return (
-    <div className="app-body">
+    <div className="app-body transition-page-enter">
       {/* ── Intelligence Panel (Left Sidebar) ── */}
-      <aside className="intelligence-panel">
+      <aside className="intelligence-panel" aria-label="Intelligence signals panel">
+
         {/* Active Signals */}
         <div className="panel-section">
           <div className="panel-section-title">Active Signals</div>
           <div className="signal-counts">
-            <div className="signal-count critical">
-              <div className="signal-count-number">{signals.critical.toString().padStart(2, '0')}</div>
-              <div className="signal-count-label">Critical</div>
-            </div>
-            <div className="signal-count high">
-              <div className="signal-count-number">{signals.high.toString().padStart(2, '0')}</div>
-              <div className="signal-count-label">High</div>
-            </div>
-            <div className="signal-count moderate">
-              <div className="signal-count-number">{signals.moderate.toString().padStart(2, '0')}</div>
-              <div className="signal-count-label">Moderate</div>
-            </div>
+            <SignalCountBadge count={signals.critical} label="Critical" variant="critical" />
+            <SignalCountBadge count={signals.high} label="High" variant="high" />
+            <SignalCountBadge count={signals.moderate} label="Moderate" variant="moderate" />
           </div>
-          <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+
+          <div
+            style={{
+              marginTop: 'var(--space-3)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
             {status?.sites_monitored ?? 0} sites monitored · Belagavi, Karnataka
           </div>
-          {/* EE status badge */}
-          <div style={{
-            marginTop: 'var(--space-2)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 10,
-            color: eeAvailable ? '#22c55e' : 'var(--color-text-muted)',
-          }}>
-            <Satellite size={10} />
+
+          {/* GEE status */}
+          <div className={`ee-status-row ${eeAvailable ? 'online' : 'offline'}`}>
+            <Satellite size={10} aria-hidden="true" />
             {eeAvailable ? 'GEE Live Data (10m Bicubic)' : 'GEE Offline'}
           </div>
         </div>
@@ -174,12 +187,12 @@ export function DashboardPage() {
             onTilesLoaded={handleGridTiles}
             onFocus={handleGridFocus}
             selectedTileId={selectedTileId}
-            onClearSelection={() => setSelectedTileId(null)}
+            onClearSelection={handleClearTileSelection}
           />
         </div>
 
         {/* Events List */}
-        <div className="events-list">
+        <div className="events-list" role="list" aria-label="Forensic events">
           {isLoading && (
             <div className="empty-state">
               <div className="loading-spinner" />
@@ -191,9 +204,14 @@ export function DashboardPage() {
             <EmptyState
               title="Unable to load signals"
               body="Could not connect to the EFI backend. Please verify the service is running."
+              icon={<AlertTriangle size={28} strokeWidth={1.5} />}
               action={
-                <button className="btn btn-secondary" onClick={() => refetch()}>
-                  <RefreshCw size={14} /> Retry
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => refetch()}
+                  id="retry-load-events"
+                >
+                  <RefreshCw size={13} /> Retry
                 </button>
               }
             />
@@ -207,20 +225,23 @@ export function DashboardPage() {
           )}
 
           {events.map((event) => (
-            <SignalCard
-              key={event.event_id}
-              event={event}
-              selected={event.event_id === selectedEvent?.event_id}
-              onClick={() => setSelectedEvent(
-                event.event_id === selectedEvent?.event_id ? null : event
-              )}
-            />
+            <div role="listitem" key={event.event_id}>
+              <SignalCard
+                event={event}
+                selected={event.event_id === selectedEvent?.event_id}
+                onClick={() =>
+                  setSelectedEvent(
+                    event.event_id === selectedEvent?.event_id ? null : event,
+                  )
+                }
+              />
+            </div>
           ))}
         </div>
       </aside>
 
       {/* ── Map + Event Detail ── */}
-      <main className="map-container">
+      <main className="map-container" aria-label="Satellite imagery map">
         <EFIMap
           events={events}
           selectedEventId={selectedEvent?.event_id ?? null}
@@ -240,35 +261,23 @@ export function DashboardPage() {
           selectedTileId={selectedTileId}
           onTileSelect={setSelectedTileId}
           focus={gridFocus}
-          onViewCenterChange={(center, zoom) => setMapView({ center, zoom })}
+          onViewCenterChange={handleMapViewChange}
         />
 
-        {/* Attribution notice */}
-        <div style={{
-          position: 'absolute',
-          bottom: 'var(--space-6)',
-          left: 'var(--space-4)',
-          fontSize: '10px',
-          color: 'var(--color-text-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-1)',
-          background: 'rgba(9,9,11,0.85)',
-          padding: '3px var(--space-2)',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          zIndex: 10,
-        }}>
+        {/* Attribution */}
+        <div className="map-attribution-banner" aria-label="Map data attribution">
           OSM · MapLibre GL ·{' '}
           <span style={{ color: '#3b82f6' }}>
             {compareState.active && compareState.highRes
-              ? 'Esri World Imagery Wayback (high-res) · GEE analysis'
-              : 'Google Earth Engine (Sentinel-2 10m Bicubic)'}
+              ? 'Esri World Imagery Wayback · GEE analysis'
+              : 'GEE Sentinel-2 10m Bicubic'}
           </span>
           {compareState.active && (
-            <span style={{ color: '#f59e0b', marginLeft: 4 }}>[Dual Compare Active]</span>
+            <span style={{ color: 'var(--color-warning)', marginLeft: 4 }}>
+              [Compare Active]
+            </span>
           )}
-          {' · EFI Platform v0.1.0'}
+          {' · EFI v0.1.0'}
         </div>
 
         {/* Event Detail Overlay */}
@@ -276,14 +285,32 @@ export function DashboardPage() {
           <EventDetailPanel
             event={selectedEvent}
             onClose={() => setSelectedEvent(null)}
-            onReview={(newStatus) => {
-              reviewMutation.mutate({ eventId: selectedEvent.event_id, newStatus });
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setSelectedEvent({ ...selectedEvent, status: newStatus as any });
-            }}
+            onReview={handleReview}
           />
         )}
       </main>
+    </div>
+  );
+}
+
+/* ── Signal Count Badge ── */
+interface SignalCountBadgeProps {
+  count: number;
+  label: string;
+  variant: 'critical' | 'high' | 'moderate';
+}
+
+function SignalCountBadge({ count, label, variant }: SignalCountBadgeProps) {
+  return (
+    <div
+      className={`signal-count ${variant}`}
+      role="status"
+      aria-label={`${count} ${label} signals`}
+    >
+      <div className="signal-count-number">
+        {count.toString().padStart(2, '0')}
+      </div>
+      <div className="signal-count-label">{label}</div>
     </div>
   );
 }

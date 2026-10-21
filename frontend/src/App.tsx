@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Header } from './components/Header';
+import { LandingPage } from './pages/Landing';
 import { DashboardPage } from './pages/Dashboard';
 import { SitesPage } from './pages/Sites';
 import './styles/global.css';
@@ -21,7 +22,8 @@ function App() {
         <div className="app-layout">
           <Header />
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/sites" element={<SitesPage />} />
             <Route
               path="/events"
@@ -37,6 +39,8 @@ function App() {
                 </div>
               }
             />
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </BrowserRouter>

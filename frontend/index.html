@@ -4,13 +4,46 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Environmental Forensic Intelligence — India Earth Observation Monitoring for sand mining, land mining, and land filling detection." />
-    <meta name="theme-color" content="#0a0c0f" />
-    <title>Environmental Forensic Intelligence</title>
+    <meta
+      name="description"
+      content="Environmental Forensic Intelligence — Satellite-powered environmental monitoring platform detecting illegal mining, excavation, and land disturbance in Belagavi, Karnataka, India using Google Earth Engine and Sentinel-2 imagery."
+    />
+    <meta name="theme-color" content="#080a0e" />
+    <meta name="robots" content="noindex" />
+    <meta property="og:title" content="Environmental Forensic Intelligence" />
+    <meta
+      property="og:description"
+      content="Satellite-powered earth observation platform for environmental law enforcement intelligence."
+    />
+    <meta property="og:type" content="website" />
+    <title>Environmental Forensic Intelligence — Belagavi Earth Observation</title>
+
+    <!-- Fonts: Inter (UI) + JetBrains Mono (code/data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- MapLibre GL CSS -->
     <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <style>
+      /* Critical above-the-fold styles to avoid FOUC */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        background: #080a0e;
+        height: 100%;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

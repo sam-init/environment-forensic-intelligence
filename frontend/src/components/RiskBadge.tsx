@@ -10,8 +10,11 @@ interface RiskBadgeProps {
 export function RiskBadge({ level, score, size = 'md' }: RiskBadgeProps) {
   if (!level) return <span className="risk-badge low">Unknown</span>;
 
+  const showDot = level === 'critical' || level === 'high';
+
   return (
     <span className={`risk-badge ${level} ${size === 'sm' ? 'btn-sm' : ''}`}>
+      {showDot && <span className="risk-dot" aria-hidden="true" />}
       {score != null && <span>{score}</span>}
       {formatRiskLevel(level)}
     </span>

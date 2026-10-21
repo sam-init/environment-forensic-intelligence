@@ -450,7 +450,7 @@ function renderGridLayers(
       type: 'fill',
       source: sourceId,
       paint: {
-        'fill-color': '#22d3ee',
+        'fill-color': '#00c2d1',
         'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.18, 0.02],
       },
     },
@@ -463,7 +463,7 @@ function renderGridLayers(
       type: 'line',
       source: sourceId,
       paint: {
-        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(34,211,238,0.55)'],
+        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#00c2d1', 'rgba(0,194,209,0.55)'],
         'line-width': ['case', ['==', ['get', 'tile_id'], selectedId], 2.4, 0.6],
         'line-opacity': 0.9,
       },

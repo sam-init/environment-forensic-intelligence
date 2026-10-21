@@ -138,7 +138,7 @@ export function DashboardPage() {
             alignItems: 'center',
             gap: 4,
             fontSize: 10,
-            color: eeAvailable ? '#22c55e' : 'var(--color-text-muted)',
+            color: eeAvailable ? 'var(--color-accent)' : 'var(--color-text-muted)',
           }}>
             <Satellite size={10} />
             {eeAvailable ? 'GEE Live Data (10m Bicubic)' : 'GEE Offline'}
@@ -228,7 +228,7 @@ export function DashboardPage() {
         />
 
         {/* Attribution notice */}
-        <div style={{
+        <div className="map-attribution" style={{
           position: 'absolute',
           bottom: 'var(--space-6)',
           left: 'var(--space-4)',
@@ -237,15 +237,12 @@ export function DashboardPage() {
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-1)',
-          background: 'rgba(9,9,11,0.85)',
           padding: '3px var(--space-2)',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid rgba(255,255,255,0.08)',
           zIndex: 10,
         }}>
-          OSM · MapLibre GL · <span style={{ color: '#3b82f6' }}>Google Earth Engine (Sentinel-2 10m Bicubic)</span>
+          OSM · MapLibre GL · <span style={{ color: 'var(--color-ee-before)' }}>Google Earth Engine (Sentinel-2 10m Bicubic)</span>
           {compareState.active && (
-            <span style={{ color: '#f59e0b', marginLeft: 4 }}>[Dual Compare Active]</span>
+            <span style={{ color: 'var(--color-ee-after)', marginLeft: 4 }}>[Dual Compare Active]</span>
           )}
           {' · EFI Platform v0.1.0'}
         </div>

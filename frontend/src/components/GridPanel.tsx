@@ -69,8 +69,8 @@ export function GridPanel({
   return (
     <div className="grid-panel">
       <div className="ee-panel-header">
-        <Grid3x3 size={14} style={{ color: '#22d3ee' }} />
-        <span className="ee-panel-title">Grid Analysis</span>
+        <Grid3x3 size={14} style={{ color: 'var(--color-accent)' }} />
+        <span className="ee-panel-title">ANALYSIS GRID</span>
         <button
           className="btn btn-ghost"
           style={{ marginLeft: 'auto', padding: '2px 4px' }}
@@ -84,7 +84,7 @@ export function GridPanel({
 
       <div className="ee-layer-label">TARGET REGION</div>
       <div className="grid-region">
-        <MapPin size={12} style={{ color: '#22d3ee' }} />
+        <MapPin size={12} style={{ color: 'var(--color-accent)' }} />
         <span>Belagavi, Karnataka</span>
       </div>
 

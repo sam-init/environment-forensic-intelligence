@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Activity } from 'lucide-react';
+import { Activity, Satellite } from 'lucide-react';
 import { api } from '../utils/api';
 import type { SystemStatus } from '../types/api';
 
@@ -17,6 +17,7 @@ export function Header() {
 
   const isDemoMode = status?.demo_mode ?? true;
   const isOnline = status !== undefined;
+  const geeOnline = status?.earth_engine_available ?? false;
 
   return (
     <>
@@ -29,8 +30,9 @@ export function Header() {
       )}
 
       <header className="header">
-        <div className="header-wordmark">
-          Environmental Forensic Intelligence
+        <div className="header-brand">
+          <div className="header-wordmark">EFI</div>
+          <div className="header-brand-subtitle">Environmental Forensic Intelligence</div>
         </div>
         <div className="header-subtext">India · Earth Observation</div>
         <div className="header-divider" />
@@ -59,11 +61,19 @@ export function Header() {
 
         <div className="header-status">
           <div
+            className="header-gee-status"
+            title={geeOnline ? 'Google Earth Engine online' : 'Google Earth Engine offline'}
+          >
+            <Satellite size={12} />
+            <span className="header-status-label">GEE {geeOnline ? 'ONLINE' : 'OFFLINE'}</span>
+          </div>
+          <div className="header-divider" />
+          <div
             className="status-dot"
-            style={{ background: isOnline ? 'var(--color-success)' : 'var(--color-error)' }}
+            style={{ background: isOnline ? 'var(--color-accent)' : 'var(--color-error)' }}
             title={isOnline ? 'System online' : 'Cannot reach backend'}
           />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+          <span className="header-status-label">
             {isOnline ? 'LIVE' : 'OFFLINE'}
           </span>
         </div>

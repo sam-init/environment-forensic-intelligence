@@ -208,9 +208,11 @@ export function EarthEnginePanel({
 
   return (
     <div className="ee-panel">
+      {(overviewLoading || compareLoading) && <div className="ee-loading-bar" aria-hidden="true" />}
+
       {/* Header */}
       <div className="ee-panel-header">
-        <Satellite size={14} style={{ color: '#3b82f6' }} />
+        <Satellite size={14} style={{ color: 'var(--color-accent)' }} />
         <span className="ee-panel-title">Earth Engine</span>
         {overviewLoading || compareLoading ? (
           <div className="loading-spinner" style={{ width: 10, height: 10, borderWidth: 1, marginLeft: 'auto' }} />

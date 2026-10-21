@@ -36,8 +36,13 @@ export function EventDetailPanel({ event, onClose, onReview }: EventDetailPanelP
     <div className="event-detail-overlay" role="dialog" aria-label={`Event detail: ${event.event_id}`}>
       {/* ── Header ── */}
       <div className="event-detail-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div className="event-detail-id">{event.event_id}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+          <div>
+            <div className="event-detail-category" style={{ marginBottom: 'var(--space-2)' }}>
+              {CATEGORY_LABELS[event.category] ?? event.category.toUpperCase()}
+            </div>
+            <div className="event-detail-id" style={{ marginBottom: 0 }}>{event.event_id}</div>
+          </div>
           <button
             onClick={onClose}
             aria-label="Close event detail"
@@ -48,16 +53,12 @@ export function EventDetailPanel({ event, onClose, onReview }: EventDetailPanelP
         </div>
 
         {event.is_demo && (
-          <div className="eyebrow" style={{ color: 'var(--color-demo)', marginBottom: 'var(--space-2)' }}>
+          <div className="eyebrow" style={{ color: 'var(--color-demo)', marginTop: 'var(--space-3)' }}>
             ⚠ DEMO DATA — Not a real incident
           </div>
         )}
 
-        <div className="event-detail-category">
-          {CATEGORY_LABELS[event.category] ?? event.category.toUpperCase()}
-        </div>
-
-        <div className="event-detail-scores">
+        <div className="event-detail-scores" style={{ marginTop: 'var(--space-4)' }}>
           <div>
             <div className={`risk-score-large ${level ?? ''}`}>
               {event.risk_score ?? '—'}

@@ -14,7 +14,7 @@ export function SignalCard({ event, selected, onClick }: SignalCardProps) {
 
   return (
     <div
-      className={`signal-card ${selected ? 'selected' : ''}`}
+      className={`signal-card risk-${level} ${selected ? 'selected' : ''}`}
       onClick={onClick}
       role="button"
       tabIndex={0}

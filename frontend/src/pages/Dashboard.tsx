@@ -2,13 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Satellite, RefreshCw, AlertTriangle } from 'lucide-react';
 import { api } from '../utils/api';
-import type { ForensicEvent, EventListResponse, SystemStatus, GridTileCollection } from '../types/api';
+import type { ForensicEvent, EventListResponse, SystemStatus } from '../types/api';
 import { SignalCard } from '../components/SignalCard';
 import { EFIMap } from '../components/EFIMap';
 import { EventDetailPanel } from '../components/EventDetailPanel';
 import { EmptyState } from '../components/EmptyState';
 import { EarthEnginePanel, type EELayer, type CompareState } from '../components/EarthEnginePanel';
-import { GridPanel } from '../components/GridPanel';
 
 /** Today's date as ISO string (YYYY-MM-DD) */
 function todayIso(): string {
@@ -37,24 +36,8 @@ export function DashboardPage() {
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
   const [compareState, setCompareState] = useState<CompareState>(INITIAL_COMPARE_STATE);
   const [mapView, setMapView] = useState(DEFAULT_MAP_VIEW);
-  const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
-  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-  const [gridFocus, setGridFocus] = useState<{ center: [number, number]; zoom: number; nonce: number } | null>(null);
 
   // Stable callbacks — prevent unnecessary child re-renders
-  const handleGridTiles = useCallback((tiles: GridTileCollection | null) => {
-    setGridTiles(tiles);
-  }, []);
-
-  const handleGridFocus = useCallback(() => {
-    setGridFocus((prev) => ({
-      center: [74.5, 15.85],
-      zoom: 9.5,
-      nonce: (prev?.nonce ?? 0) + 1,
-    }));
-  }, []);
-
-  const handleClearTileSelection = useCallback(() => setSelectedTileId(null), []);
   const handleMapViewChange = useCallback(
     (center: [number, number], zoom: number) => setMapView({ center, zoom }),
     [],
@@ -181,16 +164,6 @@ export function DashboardPage() {
           </div>
         )}
 
-        {/* Belagavi 1 km review grid */}
-        <div className="panel-section" style={{ paddingTop: 0 }}>
-          <GridPanel
-            onTilesLoaded={handleGridTiles}
-            onFocus={handleGridFocus}
-            selectedTileId={selectedTileId}
-            onClearSelection={handleClearTileSelection}
-          />
-        </div>
-
         {/* Events List */}
         <div className="events-list" role="list" aria-label="Forensic events">
           {isLoading && (
@@ -257,10 +230,6 @@ export function DashboardPage() {
           afterLabel={compareState.afterLabel}
           beforeAttribution={compareState.beforeAttribution}
           afterAttribution={compareState.afterAttribution}
-          gridTiles={gridTiles}
-          selectedTileId={selectedTileId}
-          onTileSelect={setSelectedTileId}
-          focus={gridFocus}
           onViewCenterChange={handleMapViewChange}
         />
 

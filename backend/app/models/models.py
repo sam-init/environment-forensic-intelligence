@@ -91,7 +91,6 @@ class JobType(str, PyEnum):
     CALCULATE_RISK = "calculate_risk"
     GENERATE_REPORT = "generate_report"
     MONITOR_SITE = "monitor_site"
-    PROCESS_CHANGE_TILE = "process_change_tile"
 
 
 class DataQuality(str, PyEnum):
@@ -461,66 +460,6 @@ class Job(Base):
         Index("idx_jobs_site_id", "site_id"),
         Index("idx_jobs_job_type", "job_type"),
         Index("idx_jobs_created_at", "created_at"),
-    )
-
-
-# ── Tile-based spectral-change pipeline ──────────────────────────────────────
-
-class ProcessingTile(Base):
-    """A fixed, state-wide processing unit.  Never represents an incident."""
-    __tablename__ = "processing_tiles"
-
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
-    tile_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=False)
-    tile_size_m: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
-    status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
-    last_input_signature: Mapped[str | None] = mapped_column(String(64))
-    last_processed_at: Mapped[datetime | None] = mapped_column(DateTime)
-    retries: Mapped[int] = mapped_column(Integer, default=0)
-    error_message: Mapped[str | None] = mapped_column(Text)
-    processing_log: Mapped[list | None] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
-
-    __table_args__ = (
-        Index("idx_processing_tiles_geometry", "geometry", postgresql_using="gist"),
-        Index("idx_processing_tiles_status", "status"),
-    )
-
-
-class ChangeCandidate(Base):
-    """Satellite-derived spectral-change candidate awaiting analyst review.
-
-    A candidate is not classified as mining, dumping, or any illegal activity.
-    """
-    __tablename__ = "change_candidates"
-
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
-    candidate_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    tile_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("processing_tiles.id"), nullable=False)
-    geometry = mapped_column(Geometry("MULTIPOLYGON", srid=4326), nullable=False)
-    area_ha: Mapped[float] = mapped_column(Float, nullable=False)
-    before_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    before_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    after_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    after_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    imagery_ids: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    indicators: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    change_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default=EventStatus.UNREVIEWED.value)
-    input_signature: Mapped[str] = mapped_column(String(64), nullable=False)
-    source: Mapped[str] = mapped_column(String(100), default="Sentinel-2 SR Harmonized")
-    high_resolution_source: Mapped[str | None] = mapped_column(Text)
-    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
-
-    __table_args__ = (
-        UniqueConstraint("tile_id", "input_signature", "candidate_id", name="uq_candidate_run_id"),
-        Index("idx_change_candidates_geometry", "geometry", postgresql_using="gist"),
-        Index("idx_change_candidates_score", "change_score"),
-        Index("idx_change_candidates_tile", "tile_id"),
     )
 
 

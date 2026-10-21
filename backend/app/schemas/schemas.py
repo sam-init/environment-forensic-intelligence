@@ -4,7 +4,7 @@ Validates geometry, enforces CRS rules, and rejects invalid coordinates.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -195,24 +195,3 @@ class ErrorResponse(BaseModel):
     detail: str | None = None
     request_id: str | None = None
 
-
-# ── Tile change detection ─────────────────────────────────────────────────────
-
-class ChangePeriodRequest(BaseModel):
-    start: date
-    end: date
-
-
-class GenerateTileGridRequest(BaseModel):
-    tile_size_m: int = Field(default=1000, ge=250, le=10_000)
-
-
-class SingleTileChangeRequest(BaseModel):
-    before: ChangePeriodRequest
-    after: ChangePeriodRequest
-    thresholds: dict[str, float] = Field(default_factory=dict)
-
-
-class QueueTileRunRequest(SingleTileChangeRequest):
-    tile_ids: list[str] | None = None
-    limit: int = Field(default=10, ge=1, le=500)

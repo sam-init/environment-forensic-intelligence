@@ -9,9 +9,7 @@ from app.core.config import get_settings
 class WorkerSettings:
     """ARQ worker configuration."""
 
-    from app.workers.change_tiles import process_change_tile_job
-    functions = [process_change_tile_job]
-    max_tries = 3
+    functions: list = []
 
     @classmethod
     def on_startup(cls, ctx: dict) -> None:

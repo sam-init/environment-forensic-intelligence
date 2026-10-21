@@ -50,7 +50,7 @@ const HIGH_RES_IMAGERY_SOURCE = {
   tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
   tileSize: 256 as const,
   attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-  maxzoom: 19,
+  maxzoom: 18,
 };
 
 export function EFIMap({

@@ -281,6 +281,8 @@ async def get_date_scene_tile(
     geometry: dict | None = None,
     vis_type: str = "true_color",
     window_days: int = 25,
+    center_lon: float | None = None,
+    center_lat: float | None = None,
 ) -> dict[str, Any]:
     """
     Find the clearest Sentinel-2 scene around `target_date` (+/- `window_days`)
@@ -294,12 +296,22 @@ async def get_date_scene_tile(
 
         if geometry:
             filter_geom = _geometry_from_geojson(geometry)
+        elif center_lon is not None and center_lat is not None:
+            filter_geom = ee.Geometry.Point([center_lon, center_lat]).buffer(10_000)
         else:
             filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
 
+        # Require coverage of the map/AOI centre as well as intersection with the
+        # AOI. Sorting only by cloud percentage can otherwise pick a scene that
+        # touches the AOI edge but leaves the map view transparent.
+        if center_lon is not None and center_lat is not None:
+            centre = ee.Geometry.Point([center_lon, center_lat])
+        else:
+            centre = filter_geom.centroid(1)
         col = (
             ee.ImageCollection(S2_COLLECTION)
             .filterBounds(filter_geom)
+            .filterBounds(centre)
             .filterDate(start, end)
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
             .sort("CLOUDY_PIXEL_PERCENTAGE")
@@ -318,6 +330,7 @@ async def get_date_scene_tile(
             col_all = (
                 ee.ImageCollection(S2_COLLECTION)
                 .filterBounds(filter_geom)
+                .filterBounds(centre)
                 .filterDate(start, end)
             )
             scaled = col_all.median().divide(10000)
@@ -363,6 +376,8 @@ async def get_before_after_comparison(
     geometry: dict | None = None,
     vis_type: str = "true_color",
     window_days: int = 25,
+    center_lon: float | None = None,
+    center_lat: float | None = None,
 ) -> dict[str, Any]:
     """
     Generate paired before & after Sentinel-2 tile URLs for side-by-side comparison.
@@ -372,6 +387,8 @@ async def get_before_after_comparison(
     def _fetch():
         if geometry:
             filter_geom = _geometry_from_geojson(geometry)
+        elif center_lon is not None and center_lat is not None:
+            filter_geom = ee.Geometry.Point([center_lon, center_lat]).buffer(10_000)
         else:
             filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
 
@@ -380,9 +397,14 @@ async def get_before_after_comparison(
             start = (dt - timedelta(days=window_days)).strftime("%Y-%m-%d")
             end = (dt + timedelta(days=window_days)).strftime("%Y-%m-%d")
 
+            if center_lon is not None and center_lat is not None:
+                centre = ee.Geometry.Point([center_lon, center_lat])
+            else:
+                centre = filter_geom.centroid(1)
             col = (
                 ee.ImageCollection(S2_COLLECTION)
                 .filterBounds(filter_geom)
+                .filterBounds(centre)
                 .filterDate(start, end)
                 .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
                 .sort("CLOUDY_PIXEL_PERCENTAGE")
@@ -395,7 +417,12 @@ async def get_before_after_comparison(
                 sc_id = str(best.get("system:index").getInfo())
                 scaled = best.divide(10000)
             else:
-                col_all = ee.ImageCollection(S2_COLLECTION).filterBounds(filter_geom).filterDate(start, end)
+                col_all = (
+                    ee.ImageCollection(S2_COLLECTION)
+                    .filterBounds(filter_geom)
+                    .filterBounds(centre)
+                    .filterDate(start, end)
+                )
                 scaled = col_all.median().divide(10000)
                 sc_date = f"{start} to {end}"
                 cloud = 0.0

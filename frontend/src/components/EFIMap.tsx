@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { Search, X } from 'lucide-react';
 import type { ForensicEvent, GridTileCollection } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
@@ -18,12 +19,33 @@ interface EFIMapProps {
   afterTileUrl?: string | null;
   beforeLabel?: string;
   afterLabel?: string;
+  beforeAttribution?: string;
+  afterAttribution?: string;
   // Belagavi 1 km processing grid
   gridTiles?: GridTileCollection | null;
   selectedTileId?: string | null;
   onTileSelect?: (tileId: string) => void;
   focus?: { center: [number, number]; zoom: number; nonce: number } | null;
+  onViewCenterChange?: (center: [number, number], zoom: number) => void;
 }
+
+type PhotonProperties = {
+  name?: string;
+  city?: string;
+  district?: string;
+  county?: string;
+  state?: string;
+  country?: string;
+  type?: string;
+  osm_value?: string;
+};
+
+type PhotonFeature = {
+  geometry: { coordinates: [number, number] };
+  properties: PhotonProperties;
+};
+
+type PhotonResponse = { features?: PhotonFeature[] };
 
 // Belagavi district centre
 const DEFAULT_CENTER: [number, number] = [74.5, 15.85];
@@ -66,10 +88,13 @@ export function EFIMap({
   afterTileUrl = null,
   beforeLabel = 'Before',
   afterLabel = 'After',
+  beforeAttribution = '© Google Earth Engine · Sentinel-2',
+  afterAttribution = '© Google Earth Engine · Sentinel-2',
   gridTiles = null,
   selectedTileId = null,
   onTileSelect,
   focus = null,
+  onViewCenterChange,
 }: EFIMapProps) {
   // Single map refs
   const singleMapContainer = useRef<HTMLDivElement>(null);
@@ -83,6 +108,72 @@ export function EFIMap({
   const beforeMapRef = useRef<maplibregl.Map | null>(null);
   const afterMapRef = useRef<maplibregl.Map | null>(null);
   const [compareMapsReady, setCompareMapsReady] = useState(false);
+
+  // Keep the view-change callback stable so map effects don't re-run on parent renders.
+  const viewChangeRef = useRef(onViewCenterChange);
+  useEffect(() => {
+    viewChangeRef.current = onViewCenterChange;
+  }, [onViewCenterChange]);
+
+  // Place / district / state search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PhotonFeature[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=en`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) throw new Error('Place search failed');
+        const data = (await res.json()) as PhotonResponse;
+        const features = Array.isArray(data.features) ? data.features : [];
+        const places = features.filter(
+          (feature) => !['street', 'house'].includes((feature.properties.type ?? '').toLowerCase()),
+        );
+        const ranked = (places.length > 0 ? places : features).sort(
+          (a, b) => searchRank(a.properties) - searchRank(b.properties),
+        );
+        setSearchResults(ranked);
+        setSearchOpen(true);
+      } catch {
+        if (!controller.signal.aborted) setSearchResults([]);
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 350);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery]);
+
+  const handleSearchSelect = (feature: PhotonFeature) => {
+    const [lon, lat] = feature.geometry.coordinates;
+    const target: [number, number] = [lon, lat];
+    const targetZoom = searchZoom(feature.properties);
+    const map = compareMode
+      ? beforeMapRef.current ?? afterMapRef.current
+      : singleMapRef.current;
+    map?.flyTo({ center: target, zoom: targetZoom, duration: 1200 });
+    viewChangeRef.current?.(target, targetZoom);
+    setSearchQuery(photonLabel(feature));
+    setSearchOpen(false);
+    setSearchResults([]);
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   //  1. Initialize Single Map (when NOT in compareMode)
@@ -117,7 +208,13 @@ export function EFIMap({
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: 'metric' }), 'bottom-left');
 
-    map.on('load', () => setSingleMapReady(true));
+    map.on('load', () => {
+      setSingleMapReady(true);
+      viewChangeRef.current?.(map.getCenter().toArray() as [number, number], map.getZoom());
+    });
+    map.on('moveend', () => {
+      viewChangeRef.current?.(map.getCenter().toArray() as [number, number], map.getZoom());
+    });
     singleMapRef.current = map;
 
     return () => {
@@ -310,10 +407,17 @@ export function EFIMap({
     syncMaps(map1, map2);
     syncMaps(map2, map1);
 
+    map1.on('moveend', () => {
+      viewChangeRef.current?.(map1.getCenter().toArray() as [number, number], map1.getZoom());
+    });
+
     let loadedCount = 0;
     const onBothLoaded = () => {
       loadedCount++;
-      if (loadedCount >= 2) setCompareMapsReady(true);
+      if (loadedCount >= 2) {
+        setCompareMapsReady(true);
+        viewChangeRef.current?.(map1.getCenter().toArray() as [number, number], map1.getZoom());
+      }
     };
 
     map1.on('load', onBothLoaded);
@@ -338,50 +442,54 @@ export function EFIMap({
     const map1 = beforeMapRef.current;
     const map2 = afterMapRef.current;
 
-    if (map1 && beforeTileUrl) {
+    if (map1) {
       if (map1.getLayer('before-ee-tiles')) map1.removeLayer('before-ee-tiles');
       if (map1.getSource('before-ee-src')) map1.removeSource('before-ee-src');
 
-      map1.addSource('before-ee-src', {
-        type: 'raster',
-        tiles: [beforeTileUrl],
-        tileSize: 256,
-        maxzoom: 18,
-        attribution: '© Google Earth Engine · Sentinel-2',
-      });
-      map1.addLayer({
-        id: 'before-ee-tiles',
-        type: 'raster',
-        source: 'before-ee-src',
-        paint: {
-          'raster-opacity': 0.95,
-          'raster-resampling': 'linear',
-        },
-      });
+      if (beforeTileUrl) {
+        map1.addSource('before-ee-src', {
+          type: 'raster',
+          tiles: [beforeTileUrl],
+          tileSize: 256,
+          maxzoom: 18,
+          attribution: beforeAttribution,
+        });
+        map1.addLayer({
+          id: 'before-ee-tiles',
+          type: 'raster',
+          source: 'before-ee-src',
+          paint: {
+            'raster-opacity': 0.95,
+            'raster-resampling': 'linear',
+          },
+        });
+      }
     }
 
-    if (map2 && afterTileUrl) {
+    if (map2) {
       if (map2.getLayer('after-ee-tiles')) map2.removeLayer('after-ee-tiles');
       if (map2.getSource('after-ee-src')) map2.removeSource('after-ee-src');
 
-      map2.addSource('after-ee-src', {
-        type: 'raster',
-        tiles: [afterTileUrl],
-        tileSize: 256,
-        maxzoom: 18,
-        attribution: '© Google Earth Engine · Sentinel-2',
-      });
-      map2.addLayer({
-        id: 'after-ee-tiles',
-        type: 'raster',
-        source: 'after-ee-src',
-        paint: {
-          'raster-opacity': 0.95,
-          'raster-resampling': 'linear',
-        },
-      });
+      if (afterTileUrl) {
+        map2.addSource('after-ee-src', {
+          type: 'raster',
+          tiles: [afterTileUrl],
+          tileSize: 256,
+          maxzoom: 18,
+          attribution: afterAttribution,
+        });
+        map2.addLayer({
+          id: 'after-ee-tiles',
+          type: 'raster',
+          source: 'after-ee-src',
+          paint: {
+            'raster-opacity': 0.95,
+            'raster-resampling': 'linear',
+          },
+        });
+      }
     }
-  }, [compareMode, compareMapsReady, beforeTileUrl, afterTileUrl]);
+  }, [compareMode, compareMapsReady, beforeTileUrl, afterTileUrl, beforeAttribution, afterAttribution]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
@@ -408,8 +516,108 @@ export function EFIMap({
           </div>
         </div>
       )}
+
+      {/* Place / district / state search */}
+      <div className="map-search" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="map-search-box">
+          <Search size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setSearchOpen(false);
+              if (e.key === 'Enter' && searchResults[0]) {
+                e.preventDefault();
+                handleSearchSelect(searchResults[0]);
+              }
+            }}
+            placeholder="Search place, district or state…"
+            aria-label="Search place, district or state"
+          />
+          {searching && <div className="loading-spinner" style={{ width: 10, height: 10, borderWidth: 1, flexShrink: 0 }} />}
+          {searchQuery && !searching && (
+            <button
+              className="map-search-clear"
+              onClick={() => {
+                setSearchQuery('');
+                setSearchResults([]);
+                setSearchOpen(false);
+              }}
+              aria-label="Clear search"
+              title="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {searchOpen && !searching && (
+          <div className="map-search-results">
+            {searchResults.length === 0 ? (
+              <div className="map-search-empty">No places found</div>
+            ) : (
+              searchResults.map((feature, index) => (
+                <button
+                  key={`${feature.geometry.coordinates.join(',')}-${index}`}
+                  className="map-search-result"
+                  onClick={() => handleSearchSelect(feature)}
+                >
+                  <div className="map-search-result-name">{feature.properties.name ?? 'Unnamed place'}</div>
+                  <div className="map-search-result-detail">{photonDetail(feature.properties)}</div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+function photonLabel(feature: PhotonFeature): string {
+  const p = feature.properties;
+  const parts = [p.name, p.city, p.district, p.county, p.state, p.country].filter(
+    (value): value is string => Boolean(value),
+  );
+  return Array.from(new Set(parts)).join(', ');
+}
+
+function photonDetail(props: PhotonProperties): string {
+  const parts = [props.city, props.district, props.county, props.state, props.country].filter(
+    (value): value is string => Boolean(value),
+  );
+  return Array.from(new Set(parts)).join(' · ') || 'Place';
+}
+
+function searchRank(props: PhotonProperties): number {
+  const order = [
+    'city',
+    'town',
+    'municipality',
+    'village',
+    'district',
+    'county',
+    'state',
+    'country',
+    'locality',
+    'suburb',
+    'neighbourhood',
+    'street',
+    'house',
+  ];
+  const index = order.indexOf((props.type ?? '').toLowerCase());
+  return index === -1 ? order.length : index;
+}
+
+function searchZoom(props: PhotonProperties): number {
+  const type = (props.type ?? props.osm_value ?? '').toLowerCase();
+  if (type === 'country') return 5;
+  if (['state', 'region'].includes(type)) return 7;
+  if (['district', 'county'].includes(type)) return 9;
+  if (['city', 'town', 'municipality'].includes(type)) return 11;
+  if (['village', 'locality', 'suburb', 'neighbourhood', 'hamlet'].includes(type)) return 13;
+  return 11;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

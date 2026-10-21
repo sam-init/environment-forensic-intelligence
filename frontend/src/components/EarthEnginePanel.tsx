@@ -3,7 +3,7 @@
  * Fetches real-time GEE tile URLs and injects them into the map.
  */
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import {
   Satellite,
   Activity,
@@ -16,7 +16,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { api } from '../utils/api';
-import type { EEOverview, EECompareResult } from '../types/api';
+import type { EEOverview, EECompareResult, WaybackComparison } from '../types/api';
 
 export type EELayer = 'osm' | 'high_res_imagery' | 'true_color' | 'ndvi' | 'ndwi' | 'bsi';
 
@@ -29,6 +29,9 @@ export interface CompareState {
   afterTileUrl: string | null;
   beforeLabel?: string;
   afterLabel?: string;
+  beforeAttribution?: string;
+  afterAttribution?: string;
+  highRes?: boolean;
   metrics?: EECompareResult['metrics'];
 }
 
@@ -37,6 +40,7 @@ interface EarthEnginePanelProps {
   onLayerChange: (layer: EELayer, tileUrl?: string) => void;
   siteGeometry?: { type: string; coordinates: unknown[] } | null;
   onCompareChange?: (compareState: CompareState) => void;
+  viewCenter?: [number, number] | null;
 }
 
 const LAYER_META: Record<EELayer, { label: string; icon: React.ReactNode; desc: string; color: string }> = {
@@ -109,14 +113,31 @@ export function EarthEnginePanel({
   onLayerChange,
   siteGeometry,
   onCompareChange,
+  viewCenter = null,
 }: EarthEnginePanelProps) {
   const [panelTab, setPanelTab] = useState<'live' | 'compare'>('live');
   const [daysBack] = useState(60);
 
-  // Compare mode state
-  const [beforeDate, setBeforeDate] = useState('2024-02-15');
-  const [afterDate, setAfterDate] = useState('2025-01-15');
+  // Compare mode state — Sentinel-2 imagery is available from 2015 onwards.
+  const todayIso = (() => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}-${month}-${day}`;
+  })();
+  const [beforeDate, setBeforeDate] = useState('2020-02-15');
+  const [afterDate, setAfterDate] = useState(todayIso);
   const [compareVis, setCompareVis] = useState<EELayer>('true_color');
+  const [highResImagery, setHighResImagery] = useState(true);
+
+  // Scene selection must follow the visible map area, otherwise a low-cloud scene
+  // that only clips the AOI edge can leave the comparison pane transparent.
+  const centerKey = viewCenter
+    ? `${viewCenter[0].toFixed(4)},${viewCenter[1].toFixed(4)}`
+    : 'default';
+  const centerParams = viewCenter
+    ? { center_lon: Number(viewCenter[0].toFixed(5)), center_lat: Number(viewCenter[1].toFixed(5)) }
+    : {};
 
   // Fetch Karnataka overview (tile URLs + scene count)
   const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery<EEOverview>({
@@ -149,22 +170,55 @@ export function EarthEnginePanel({
     isLoading: compareLoading,
     refetch: refetchCompare,
   } = useQuery<EECompareResult>({
-    queryKey: ['ee-compare', beforeDate, afterDate, compareVis, siteGeometry],
+    queryKey: ['ee-compare', beforeDate, afterDate, compareVis, siteGeometry, centerKey],
     queryFn: async () => {
       if (siteGeometry) {
         const r = await api.post<EECompareResult>('/earth-engine/compare', { geometry: siteGeometry }, {
-          params: { before_date: beforeDate, after_date: afterDate, vis_type: compareVis },
+          params: {
+            before_date: beforeDate,
+            after_date: afterDate,
+            vis_type: compareVis,
+            ...centerParams,
+          },
         });
         return r.data;
       }
       const r = await api.get<EECompareResult>('/earth-engine/compare', {
-        params: { before_date: beforeDate, after_date: afterDate, vis_type: compareVis },
+        params: {
+          before_date: beforeDate,
+          after_date: afterDate,
+          vis_type: compareVis,
+          ...centerParams,
+        },
       });
       return r.data;
     },
     enabled: panelTab === 'compare',
     staleTime: 10 * 60_000,
   });
+
+  // Esri Wayback historical high-resolution basemaps (visual comparison only).
+  const {
+    data: waybackData,
+    isLoading: waybackLoading,
+    isError: waybackError,
+  } = useQuery<WaybackComparison>({
+    queryKey: ['wayback', beforeDate, afterDate],
+    queryFn: async () => {
+      const r = await api.get<WaybackComparison>('/earth-engine/wayback', {
+        params: { before_date: beforeDate, after_date: afterDate },
+      });
+      return r.data;
+    },
+    enabled: panelTab === 'compare' && highResImagery,
+    staleTime: 24 * 60 * 60_000,
+    placeholderData: keepPreviousData,
+    retry: 1,
+  });
+
+  const waybackBefore = highResImagery ? waybackData?.before : null;
+  const waybackAfter = highResImagery ? waybackData?.after : null;
+  const useWayback = Boolean(waybackBefore?.tile_url && waybackAfter?.tile_url);
 
   // Propagate comparison state to parent
   useEffect(() => {
@@ -174,14 +228,29 @@ export function EarthEnginePanel({
         beforeDate,
         afterDate,
         visType: compareVis,
-        beforeTileUrl: compareData?.before?.tile_url ?? null,
-        afterTileUrl: compareData?.after?.tile_url ?? null,
-        beforeLabel: compareData?.before?.scene_date
-          ? `BEFORE: ${compareData.before.scene_date} (${compareData.before.cloud_percentage}% cloud)`
-          : `BEFORE: ${beforeDate}`,
-        afterLabel: compareData?.after?.scene_date
-          ? `AFTER: ${compareData.after.scene_date} (${compareData.after.cloud_percentage}% cloud)`
-          : `AFTER: ${afterDate}`,
+        beforeTileUrl: useWayback
+          ? waybackBefore?.tile_url ?? null
+          : compareData?.before?.tile_url ?? null,
+        afterTileUrl: useWayback
+          ? waybackAfter?.tile_url ?? null
+          : compareData?.after?.tile_url ?? null,
+        beforeLabel: useWayback
+          ? `BEFORE: Esri Wayback ${waybackBefore?.release_date} (high-res)`
+          : compareData?.before?.scene_date
+            ? `BEFORE: Sentinel-2 ${compareData.before.scene_date} (${compareData.before.cloud_percentage}% cloud)`
+            : `BEFORE: ${beforeDate}`,
+        afterLabel: useWayback
+          ? `AFTER: Esri Wayback ${waybackAfter?.release_date} (high-res)`
+          : compareData?.after?.scene_date
+            ? `AFTER: Sentinel-2 ${compareData.after.scene_date} (${compareData.after.cloud_percentage}% cloud)`
+            : `AFTER: ${afterDate}`,
+        beforeAttribution: useWayback
+          ? '© Esri — World Imagery Wayback'
+          : '© Google Earth Engine · Sentinel-2 (10m)',
+        afterAttribution: useWayback
+          ? '© Esri — World Imagery Wayback'
+          : '© Google Earth Engine · Sentinel-2 (10m)',
+        highRes: useWayback,
         metrics: compareData?.metrics,
       });
     } else {
@@ -194,7 +263,7 @@ export function EarthEnginePanel({
         afterTileUrl: null,
       });
     }
-  }, [panelTab, compareData, beforeDate, afterDate, compareVis]);
+  }, [panelTab, compareData, beforeDate, afterDate, compareVis, highResImagery, waybackBefore, waybackAfter, useWayback]);
 
   function handleLayerSwitch(layer: EELayer) {
     if (layer === 'osm' || layer === 'high_res_imagery') {
@@ -318,7 +387,10 @@ export function EarthEnginePanel({
         <div className="ee-compare-panel">
           <div className="ee-layer-label">TEMPORAL COMPARISON</div>
           <div className="ee-compare-desc">
-            Side-by-side Sentinel-2 observation comparison to monitor land mining and sand extraction.
+            Side-by-side comparison using high-resolution Esri Wayback basemaps by default, so both
+            panes stay sharp. The Wayback release nearest each date is used; release dates are
+            approximate, not exact capture dates. Turn the high-res option off for date-accurate
+            Sentinel-2 10 m imagery.
           </div>
 
           {/* Date Pickers */}
@@ -332,28 +404,40 @@ export function EarthEnginePanel({
                 type="date"
                 className="ee-date-input"
                 value={beforeDate}
+                min="2015-06-23"
+                max={todayIso}
                 onChange={(e) => setBeforeDate(e.target.value)}
               />
             </div>
             <div className="ee-date-presets">
               <button
+                className={`ee-preset-btn ${beforeDate === '2020-02-15' ? 'active' : ''}`}
+                onClick={() => setBeforeDate('2020-02-15')}
+              >
+                Feb 2020
+              </button>
+              <button
+                className={`ee-preset-btn ${beforeDate === '2022-02-15' ? 'active' : ''}`}
+                onClick={() => setBeforeDate('2022-02-15')}
+              >
+                Feb 2022
+              </button>
+              <button
                 className={`ee-preset-btn ${beforeDate === '2024-02-15' ? 'active' : ''}`}
                 onClick={() => setBeforeDate('2024-02-15')}
               >
-                Feb 2024 (1 yr)
-              </button>
-              <button
-                className={`ee-preset-btn ${beforeDate === '2024-08-15' ? 'active' : ''}`}
-                onClick={() => setBeforeDate('2024-08-15')}
-              >
-                Aug 2024 (6 mos)
+                Feb 2024
               </button>
             </div>
-            {compareData?.before?.scene_date && (
+            {useWayback && waybackBefore ? (
               <div className="ee-scene-meta">
-                Best scene: {compareData.before.scene_date} · {compareData.before.cloud_percentage}% cloud
+                High-res: Esri Wayback {waybackBefore.release_date} · {waybackBefore.age_days}d from target
               </div>
-            )}
+            ) : compareData?.before?.scene_date ? (
+              <div className="ee-scene-meta">
+                Sentinel-2 scene: {compareData.before.scene_date} · {compareData.before.cloud_percentage}% cloud
+              </div>
+            ) : null}
           </div>
 
           <div className="ee-date-block" style={{ marginTop: 10 }}>
@@ -366,28 +450,40 @@ export function EarthEnginePanel({
                 type="date"
                 className="ee-date-input"
                 value={afterDate}
+                min="2015-06-23"
+                max={todayIso}
                 onChange={(e) => setAfterDate(e.target.value)}
               />
             </div>
             <div className="ee-date-presets">
               <button
-                className={`ee-preset-btn ${afterDate === '2025-01-15' ? 'active' : ''}`}
-                onClick={() => setAfterDate('2025-01-15')}
+                className={`ee-preset-btn ${afterDate === todayIso ? 'active' : ''}`}
+                onClick={() => setAfterDate(todayIso)}
               >
-                Jan 2025 (Current)
+                Current ({todayIso.slice(0, 4)})
               </button>
               <button
-                className={`ee-preset-btn ${afterDate === '2024-11-15' ? 'active' : ''}`}
-                onClick={() => setAfterDate('2024-11-15')}
+                className={`ee-preset-btn ${afterDate === '2025-02-15' ? 'active' : ''}`}
+                onClick={() => setAfterDate('2025-02-15')}
               >
-                Nov 2024
+                Feb 2025
+              </button>
+              <button
+                className={`ee-preset-btn ${afterDate === '2022-02-15' ? 'active' : ''}`}
+                onClick={() => setAfterDate('2022-02-15')}
+              >
+                Feb 2022
               </button>
             </div>
-            {compareData?.after?.scene_date && (
+            {useWayback && waybackAfter ? (
               <div className="ee-scene-meta">
-                Best scene: {compareData.after.scene_date} · {compareData.after.cloud_percentage}% cloud
+                High-res: Esri Wayback {waybackAfter.release_date} · {waybackAfter.age_days}d from target
               </div>
-            )}
+            ) : compareData?.after?.scene_date ? (
+              <div className="ee-scene-meta">
+                Sentinel-2 scene: {compareData.after.scene_date} · {compareData.after.cloud_percentage}% cloud
+              </div>
+            ) : null}
           </div>
 
           {/* Visualization selector */}
@@ -414,6 +510,28 @@ export function EarthEnginePanel({
               NDVI
             </button>
           </div>
+
+          <label className="ee-highres-toggle">
+            <input
+              type="checkbox"
+              checked={highResImagery}
+              onChange={(e) => setHighResImagery(e.target.checked)}
+            />
+            <span>
+              High-resolution historical imagery (both)
+              <small>Esri Wayback — sharp, but release date is approximate</small>
+            </span>
+          </label>
+          {highResImagery && waybackLoading && (
+            <div style={{ fontSize: 9, color: 'var(--color-text-muted)', marginTop: 4 }}>
+              Loading high-res Wayback imagery…
+            </div>
+          )}
+          {highResImagery && waybackError && (
+            <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 4 }}>
+              High-res unavailable — falling back to Sentinel-2.
+            </div>
+          )}
 
           {/* Change Metrics Card */}
           {compareData?.metrics && (compareData.metrics.bsi_delta !== undefined || compareData.metrics.ndvi_delta !== undefined) && (
@@ -448,6 +566,11 @@ export function EarthEnginePanel({
                   ⚠️ Vegetation clearing detected
                 </div>
               )}
+              {highResImagery && (
+                <div style={{ marginTop: 6, fontSize: 9, color: 'var(--color-text-muted)' }}>
+                  Metrics use Sentinel-2 scenes for the selected dates; high-res panes are for visual comparison.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -456,12 +579,15 @@ export function EarthEnginePanel({
       {/* Attribution */}
       <div className="ee-attribution">
         <a
-          href="https://earthengine.google.com"
+          href={highResImagery ? 'https://livingatlas.arcgis.com/wayback/' : 'https://earthengine.google.com'}
           target="_blank"
           rel="noopener noreferrer"
           style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--color-text-muted)', textDecoration: 'none', fontSize: 9 }}
         >
-          <ExternalLink size={8} /> Powered by Google Earth Engine · 10m bicubic
+          <ExternalLink size={8} />
+          {highResImagery
+            ? 'High-res: Esri World Imagery Wayback · Analysis: Google Earth Engine'
+            : 'Powered by Google Earth Engine · Sentinel-2 10m'}
         </a>
       </div>
     </div>

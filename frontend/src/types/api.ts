@@ -185,6 +185,21 @@ export interface EESceneInfo {
   tile_url: string;
 }
 
+export interface WaybackRelease {
+  release_id: string;
+  release_date: string;
+  title: string;
+  tile_url: string;
+  age_days: number;
+  source: string;
+}
+
+export interface WaybackComparison {
+  before: WaybackRelease | null;
+  after: WaybackRelease | null;
+  max_release_gap_days: number;
+}
+
 export interface EECompareResult {
   before: EESceneInfo;
   after: EESceneInfo;

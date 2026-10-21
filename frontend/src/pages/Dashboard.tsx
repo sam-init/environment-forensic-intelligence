@@ -11,16 +11,26 @@ import { EarthEnginePanel, type EELayer, type CompareState } from '../components
 import { GridPanel } from '../components/GridPanel';
 
 export function DashboardPage() {
+  const todayIso = (() => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${now.getFullYear()}-${month}-${day}`;
+  })();
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
   const [activeLayer, setActiveLayer] = useState<EELayer>('true_color');
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
   const [compareState, setCompareState] = useState<CompareState>({
     active: false,
-    beforeDate: '2024-02-15',
-    afterDate: '2025-01-15',
+    beforeDate: '2020-02-15',
+    afterDate: todayIso,
     visType: 'true_color',
     beforeTileUrl: null,
     afterTileUrl: null,
+  });
+  const [mapView, setMapView] = useState<{ center: [number, number]; zoom: number }>({
+    center: [74.5, 15.85],
+    zoom: 9,
   });
   const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
@@ -153,6 +163,7 @@ export function DashboardPage() {
               onLayerChange={handleLayerChange}
               siteGeometry={selectedGeometry}
               onCompareChange={setCompareState}
+              viewCenter={mapView.center}
             />
           </div>
         )}
@@ -214,6 +225,8 @@ export function DashboardPage() {
           events={events}
           selectedEventId={selectedEvent?.event_id ?? null}
           onEventSelect={setSelectedEvent}
+          center={mapView.center}
+          zoom={mapView.zoom}
           activeLayer={activeLayer}
           eeTileUrl={eeTileUrl}
           compareMode={compareState.active}
@@ -221,10 +234,13 @@ export function DashboardPage() {
           afterTileUrl={compareState.afterTileUrl}
           beforeLabel={compareState.beforeLabel}
           afterLabel={compareState.afterLabel}
+          beforeAttribution={compareState.beforeAttribution}
+          afterAttribution={compareState.afterAttribution}
           gridTiles={gridTiles}
           selectedTileId={selectedTileId}
           onTileSelect={setSelectedTileId}
           focus={gridFocus}
+          onViewCenterChange={(center, zoom) => setMapView({ center, zoom })}
         />
 
         {/* Attribution notice */}
@@ -243,7 +259,12 @@ export function DashboardPage() {
           border: '1px solid rgba(255,255,255,0.08)',
           zIndex: 10,
         }}>
-          OSM · MapLibre GL · <span style={{ color: '#3b82f6' }}>Google Earth Engine (Sentinel-2 10m Bicubic)</span>
+          OSM · MapLibre GL ·{' '}
+          <span style={{ color: '#3b82f6' }}>
+            {compareState.active && compareState.highRes
+              ? 'Esri World Imagery Wayback (high-res) · GEE analysis'
+              : 'Google Earth Engine (Sentinel-2 10m Bicubic)'}
+          </span>
           {compareState.active && (
             <span style={{ color: '#f59e0b', marginLeft: 4 }}>[Dual Compare Active]</span>
           )}

@@ -5,6 +5,7 @@ and before-and-after temporal comparison with change metrics.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -17,6 +18,7 @@ from app.services.earth_engine import (
     get_site_stats,
     is_ee_available,
 )
+from app.services.wayback import get_wayback_comparison
 
 router = APIRouter(prefix="/earth-engine", tags=["Earth Engine"])
 
@@ -115,6 +117,8 @@ async def scene_tile(
     min_lat: float | None = Query(default=None),
     max_lon: float | None = Query(default=None),
     max_lat: float | None = Query(default=None),
+    center_lon: float | None = Query(default=None),
+    center_lat: float | None = Query(default=None),
 ) -> dict[str, Any]:
     """
     Find the clearest Sentinel-2 scene around target_date and return
@@ -141,11 +145,35 @@ async def scene_tile(
             geometry=geometry,
             vis_type=vis_type,
             window_days=window_days,
+            center_lon=center_lon,
+            center_lat=center_lat,
         )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Earth Engine error: {exc}",
+        ) from exc
+
+
+# ── Historical High-Resolution Imagery (Esri Wayback) ─────────────────────────
+
+@router.get("/wayback")
+async def wayback_dates(
+    before_date: str = Query(..., description="Before date (YYYY-MM-DD)"),
+    after_date: str = Query(..., description="After / current date (YYYY-MM-DD)"),
+) -> dict[str, Any]:
+    """
+    Return the nearest Esri World Imagery Wayback releases for both dates.
+    These are high-resolution visual basemaps, not Sentinel-2 analysis tiles.
+    """
+    try:
+        return await asyncio.get_event_loop().run_in_executor(
+            None, get_wayback_comparison, before_date, after_date
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Wayback imagery error: {exc}",
         ) from exc
 
 
@@ -161,6 +189,8 @@ async def compare_dates(
     min_lat: float | None = Query(default=None),
     max_lon: float | None = Query(default=None),
     max_lat: float | None = Query(default=None),
+    center_lon: float | None = Query(default=None),
+    center_lat: float | None = Query(default=None),
 ) -> dict[str, Any]:
     """
     Generate paired before & after high-resolution Sentinel-2 tile sets for side-by-side
@@ -188,6 +218,8 @@ async def compare_dates(
             geometry=geometry,
             vis_type=vis_type,
             window_days=window_days,
+            center_lon=center_lon,
+            center_lat=center_lat,
         )
     except Exception as exc:
         raise HTTPException(
@@ -203,6 +235,8 @@ async def compare_dates_post(
     after_date: str = Query(..., description="After / current date (YYYY-MM-DD)"),
     vis_type: str = Query(default="true_color"),
     window_days: int = Query(default=25, ge=5, le=90),
+    center_lon: float | None = Query(default=None),
+    center_lat: float | None = Query(default=None),
 ) -> dict[str, Any]:
     """
     Generate paired before & after tiles with GeoJSON geometry in request body
@@ -218,6 +252,8 @@ async def compare_dates_post(
             geometry=geometry,
             vis_type=vis_type,
             window_days=window_days,
+            center_lon=center_lon,
+            center_lat=center_lat,
         )
     except Exception as exc:
         raise HTTPException(

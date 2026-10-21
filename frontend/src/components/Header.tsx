@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, Satellite } from 'lucide-react';
 import { api } from '../utils/api';
@@ -30,16 +30,16 @@ export function Header() {
       )}
 
       <header className="header">
-        <div className="header-brand">
-          <div className="header-wordmark">EFI</div>
-          <div className="header-brand-subtitle">Environmental Forensic Intelligence</div>
-        </div>
+        <Link to="/" className="header-brand" aria-label="Back to landing page">
+          <span className="header-wordmark">EFI</span>
+          <span className="header-brand-subtitle">Environmental Forensic Intelligence</span>
+        </Link>
         <div className="header-subtext">India · Earth Observation</div>
         <div className="header-divider" />
 
         <nav className="header-nav" aria-label="Main navigation">
           <NavLink
-            to="/"
+            to="/dashboard"
             end
             className={({ isActive }) => `header-nav-link ${isActive ? 'active' : ''}`}
           >

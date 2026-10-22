@@ -168,16 +168,7 @@ body {
   background-color: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* overflow is managed per-page:
-     - dashboard/map: overflow:hidden via .app-layout
-     - landing page: overflow:auto (scrollable) via body.lp-page
-  */
   overflow: hidden;
-}
-
-/* Landing page restores scroll */
-body.lp-page {
-  overflow: auto;
 }
 
 a {
@@ -1988,7 +1979,97 @@ input, textarea {
   color: #fbbf24;
 }
 
+/* ── Belagavi 1 km Processing Grid ────────────────────────────── */
+.grid-panel {
+  padding: var(--space-3) 0 var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
+  margin-top: var(--space-2);
+}
 
+.grid-region {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+  padding: 6px var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.grid-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+.grid-meta-row strong {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+.grid-meta-muted { opacity: 0.7; }
+
+.grid-generate-btn {
+  width: 100%;
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  padding: 6px var(--space-2);
+}
+
+.grid-panel .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.grid-summary {
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--color-cyan);
+  font-family: var(--font-mono);
+  animation: fadeIn 0.3s both;
+}
+
+.grid-error {
+  margin-top: 6px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #f87171;
+}
+
+.grid-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: var(--space-3);
+  padding: 6px var(--space-2);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  background: rgba(34, 211, 238, 0.07);
+  border-radius: var(--radius-md);
+  animation: fadeIn 0.2s both;
+}
+
+.grid-selected-label {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.grid-selected-id {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--color-cyan);
+  word-break: break-all;
+}
+
+.grid-hint {
+  margin-top: var(--space-3);
+  font-size: 9px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
 
 /* ── Map Event Marker ─────────────────────────────────────────── */
 .map-event-marker {

@@ -1,5 +1,6 @@
 """Models package."""
 from app.models.models import (
+    ChangeCandidate,
     AuditLog,
     DataQuality,
     DataSource,
@@ -10,6 +11,7 @@ from app.models.models import (
     Job,
     JobStatus,
     JobType,
+    ProcessingTile,
     MLModel,
     Observation,
     ObservationFeature,
@@ -30,9 +32,11 @@ __all__ = [
     "EventObservation",
     "EventStatus",
     "ForensicEvent",
+    "ChangeCandidate",
     "Job",
     "JobStatus",
     "JobType",
+    "ProcessingTile",
     "MLModel",
     "Observation",
     "ObservationFeature",

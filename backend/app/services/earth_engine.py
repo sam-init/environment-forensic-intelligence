@@ -21,6 +21,8 @@ from typing import Any
 
 import ee
 
+from app.services.change_detection import ComparisonPeriod, candidate_from_vector, validate_periods
+
 logger = logging.getLogger(__name__)
 
 EE_PROJECT = "forensic-intelligence-511405"
@@ -124,6 +126,84 @@ def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) 
 def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
     """Convert a GeoJSON geometry dict to an EE Geometry."""
     return ee.Geometry(geojson)
+
+
+def get_belagavi_boundary() -> dict[str, Any]:
+    """Return Belagavi district's administrative boundary from GEE's GAUL collection.
+
+    GAUL 2015 predates the Belgaum -> Belagavi rename, so both spellings are
+    accepted. The district outline is the only area the 1 km grid is built on.
+    """
+    collection = ee.FeatureCollection("FAO/GAUL/2015/level2")
+    districts = collection.filter(ee.Filter.eq("ADM0_NAME", "India")).filter(
+        ee.Filter.eq("ADM1_NAME", "Karnataka")
+    ).filter(ee.Filter.inList("ADM2_NAME", ["Belagavi", "Belgaum"]))
+    if districts.size().getInfo() == 0:
+        raise RuntimeError("Belagavi district was not found in the Earth Engine GAUL level-2 collection.")
+    geometry = districts.geometry().getInfo()
+    if not geometry:
+        raise RuntimeError("Belagavi district boundary is empty in the Earth Engine GAUL collection.")
+    return geometry
+
+
+def _mask_s2_for_change(image: ee.Image) -> ee.Image:
+    """Use SCL plus QA60, retaining valid land/water observations only."""
+    scl = image.select("SCL")
+    valid_scl = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10)).And(scl.neq(11))
+    return _mask_s2_clouds(image).updateMask(valid_scl)
+
+
+def detect_single_tile_change(
+    geometry: dict,
+    before: ComparisonPeriod,
+    after: ComparisonPeriod,
+    thresholds: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Run one bounded, explainable Sentinel-2 change calculation in GEE.
+
+    Results are spectral-change candidates only. Vectorisation is constrained to
+    one grid tile and therefore cannot accidentally process Karnataka at once.
+    """
+    validate_periods(before, after)
+    config = {"ndvi_loss": -0.15, "bsi_gain": 0.10, "min_area_m2": 2_500.0}
+    config.update(thresholds or {})
+    tile = _geometry_from_geojson(geometry)
+
+    def composite(period: ComparisonPeriod) -> tuple[ee.Image, list[str]]:
+        collection = (ee.ImageCollection(S2_COLLECTION).filterBounds(tile)
+            .filterDate(period.start.isoformat(), (period.end + timedelta(days=1)).isoformat())
+            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 70)).map(_mask_s2_for_change))
+        ids = collection.aggregate_array("system:index").getInfo()
+        if not ids:
+            raise ValueError(f"No usable Sentinel-2 scenes for {period.signature}.")
+        image = collection.median()
+        ndvi = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
+        bsi = image.expression("((B11+B4)-(B8+B2))/((B11+B4)+(B8+B2))", {
+            "B11": image.select("B11"), "B8": image.select("B8"), "B4": image.select("B4"), "B2": image.select("B2"),
+        }).rename("BSI")
+        return image.addBands([ndvi, bsi]), ids
+
+    before_image, before_ids = composite(before)
+    after_image, after_ids = composite(after)
+    ndvi_delta = after_image.select("NDVI").subtract(before_image.select("NDVI")).rename("ndvi_delta")
+    bsi_delta = after_image.select("BSI").subtract(before_image.select("BSI")).rename("bsi_delta")
+    exposed_after = after_image.select("BSI").gt(0).And(after_image.select("NDVI").lt(0.2))
+    change_mask = ndvi_delta.lte(config["ndvi_loss"]).And(bsi_delta.gte(config["bsi_gain"])).And(exposed_after).selfMask()
+    vectors = change_mask.reduceToVectors(
+        geometry=tile, scale=10, geometryType="polygon", eightConnected=True,
+        labelProperty="change", reducer=ee.Reducer.countEvery(), maxPixels=10_000_000, bestEffort=True,
+    )
+    vectors = vectors.map(lambda feature: feature.set({
+        "area_m2": feature.geometry().area(1),
+        "ndvi_delta": ndvi_delta.reduceRegion(ee.Reducer.mean(), feature.geometry(), 10, maxPixels=1e7).get("ndvi_delta"),
+        "bsi_delta": bsi_delta.reduceRegion(ee.Reducer.mean(), feature.geometry(), 10, maxPixels=1e7).get("bsi_delta"),
+    })).filter(ee.Filter.gte("area_m2", config["min_area_m2"]))
+    raw = vectors.getInfo().get("features", [])
+    candidates = []
+    for index, feature in enumerate(raw):
+        candidates.append(candidate_from_vector(feature, index))
+    return {"candidates": candidates, "before_scene_ids": before_ids, "after_scene_ids": after_ids,
+            "thresholds": config, "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)"}
 
 
 # ── Standard Visualization Configurations ────────────────────────────────────

@@ -1989,10 +1989,9 @@ input, textarea {
   border: 2px solid currentColor;
   background: rgba(0,0,0,0.5);
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: box-shadow 0.15s, width 0.15s, height 0.15s;
 }
 .map-event-marker:hover {
-  transform: scale(1.5);
   box-shadow: 0 0 10px currentColor;
 }
 

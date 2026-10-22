@@ -686,16 +686,19 @@ function renderEventLayers(
     if (event.geometry?.coordinates) {
       const coords = getFirstCoordinate(event.geometry);
       if (coords) {
+        const selected = event.event_id === selectedEventId;
+        const size = selected ? 14 : 10;
         const el = document.createElement('div');
         el.className = 'map-event-marker';
         el.style.cssText = `
-          width: 10px; height: 10px; border-radius: 50%;
+          width: ${size}px; height: ${size}px; border-radius: 50%;
           background: ${color}; border: 2px solid rgba(255,255,255,0.3);
           cursor: pointer;
-          ${event.event_id === selectedEventId ? 'transform: scale(1.5);' : ''}
+          box-shadow: ${selected ? `0 0 0 3px ${color}33` : 'none'};
         `;
+        el.title = 'Incident location';
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat(coords)
           .addTo(map);
 

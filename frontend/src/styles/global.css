@@ -168,7 +168,16 @@ body {
   background-color: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* overflow is managed per-page:
+     - dashboard/map: overflow:hidden via .app-layout
+     - landing page: overflow:auto (scrollable) via body.lp-page
+  */
   overflow: hidden;
+}
+
+/* Landing page restores scroll */
+body.lp-page {
+  overflow: auto;
 }
 
 a {

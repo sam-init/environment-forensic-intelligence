@@ -13,13 +13,17 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  FileText,
+  Building2,
 } from 'lucide-react';
-import type { ForensicEvent, GridTileCollection } from '../types/api';
+import type { ForensicEvent, GridTileCollection, ForensicReport } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
 import { useLocationInfo } from '../hooks/useLocationInfo';
 import { getBelagavi1KmGrid } from '../utils/gridGenerator';
 import { api } from '../utils/api';
+import { ForensicReportModal } from './ForensicReportModal';
+import { FileComplaintModal } from './FileComplaintModal';
 
 interface EFIMapProps {
   events?: ForensicEvent[];
@@ -196,6 +200,50 @@ export function EFIMap({
     afterImg: string;
   } | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Forensic Report & Physical Inspection Complaint State
+  const [forensicReport, setForensicReport] = useState<ForensicReport | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  const handleGenerateReport = async () => {
+    if (!aiVerdict) return;
+    setIsGeneratingReport(true);
+    setAnalysisError(null);
+
+    const bDate = beforeLabel?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '2020-02-15';
+    const aDate = afterLabel?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || new Date().toISOString().slice(0, 10);
+
+    try {
+      const res = await api.post<ForensicReport>('/reports/generate', {
+        site_name: aiVerdict.tile_id ? `Monitored Parcel ${aiVerdict.tile_id}` : (locationInfo.area || 'Belagavi Monitored Land Reach'),
+        area_name: `${locationInfo.area || 'Belagavi District'}, ${locationInfo.district.replace(/\s*District/i, '')} District, Karnataka`,
+        latitude: currentCenter[1],
+        longitude: currentCenter[0],
+        before_image: aiVerdict.beforeImg,
+        after_image: aiVerdict.afterImg,
+        before_date: bDate,
+        after_date: aDate,
+        duration_str: `Monitored surveillance window: ${bDate} to ${aDate}`,
+        change_probability: aiVerdict.change_probability,
+        severity: aiVerdict.severity,
+        change_type: aiVerdict.is_changed
+          ? 'Unpermitted Ground Excavation / Sand Extraction'
+          : 'Consistent Natural Terrain Surface (No Ground Disruption)',
+        edge_correlation: aiVerdict.edge_correlation,
+        deep_similarity: aiVerdict.deep_similarity,
+      });
+
+      setForensicReport(res.data);
+      setIsReportModalOpen(true);
+    } catch (err: any) {
+      console.error('Failed to generate report:', err);
+      setAnalysisError(err?.response?.data?.detail || err?.message || 'Error compiling forensic report.');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
 
   // Clear AI verdict when leaving compare mode
   useEffect(() => {
@@ -1196,26 +1244,75 @@ export function EFIMap({
             </div>
 
             {/* Footer Actions */}
-            <div className="ai-verdict-footer">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setAiVerdict(null)}
-              >
-                Dismiss
-              </button>
-              <button
-                type="button"
-                className="btn-ai-analyze"
-                onClick={handleRunAiDetection}
-                disabled={isAnalyzing}
-              >
-                <RefreshCw size={13} className={isAnalyzing ? 'spin' : ''} style={{ marginRight: 6 }} />
-                <span>Re-Analyze Area</span>
-              </button>
+            <div className="ai-verdict-footer" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleGenerateReport}
+                  disabled={isGeneratingReport}
+                  title="Generate Official Environmental Forensic Report with PDF Download"
+                >
+                  <FileText size={13} style={{ marginRight: 6 }} />
+                  <span>{isGeneratingReport ? 'Compiling Report with NVIDIA NIM…' : 'Generate Forensic Report (PDF)'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsComplaintModalOpen(true)}
+                  style={{ color: '#f87171', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }}
+                  title="Submit statutory physical inspection notice to KSPCB and Belagavi Mines Dept"
+                >
+                  <Building2 size={13} style={{ marginRight: 6 }} />
+                  <span>Request Physical Field Inspection</span>
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setAiVerdict(null)}
+                >
+                  Dismiss
+                </button>
+                <button
+                  type="button"
+                  className="btn-ai-analyze"
+                  onClick={handleRunAiDetection}
+                  disabled={isAnalyzing}
+                >
+                  <RefreshCw size={13} className={isAnalyzing ? 'spin' : ''} style={{ marginRight: 6 }} />
+                  <span>Re-Analyze Area</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Forensic Report Modal (with Print / PDF Download) */}
+      <ForensicReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        report={forensicReport}
+        onFileComplaint={() => setIsComplaintModalOpen(true)}
+      />
+
+      {/* Statutory Physical Inspection Complaint Modal */}
+      {aiVerdict && (
+        <FileComplaintModal
+          isOpen={isComplaintModalOpen}
+          onClose={() => setIsComplaintModalOpen(false)}
+          siteId={aiVerdict.tile_id || undefined}
+          siteName={aiVerdict.tile_id ? `Monitored Land Parcel ${aiVerdict.tile_id}` : (locationInfo.area || 'Belagavi Monitored Sector')}
+          areaName={`${locationInfo.area || 'Belagavi Region'}, ${locationInfo.district.replace(/\s*District/i, '')} District, Karnataka`}
+          latitude={currentCenter[1]}
+          longitude={currentCenter[0]}
+          changeType={aiVerdict.is_changed ? 'Unpermitted Ground Excavation / Sand Extraction' : 'Land Parcel Change Surveillance'}
+          severity={aiVerdict.severity}
+          summaryEvidence={`Autonomous Siamese ResNet-18 satellite surveillance identified ground disruption at coordinates ${currentCenter[1].toFixed(5)}°N, ${currentCenter[0].toFixed(5)}°E (${(aiVerdict.change_probability * 100).toFixed(1)}% change probability). Requesting physical field verification and boundary pegging by the District Mining Task Force.`}
+        />
       )}
 
       {/* Floating Bottom HUD with live location context */}

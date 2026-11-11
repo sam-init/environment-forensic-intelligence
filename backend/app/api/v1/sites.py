@@ -1,220 +1,138 @@
 """
-Sites API router — CRUD for monitoring sites + AOIs.
-Includes in-memory demo fallback when PostgreSQL container is offline.
+Sites API router — CRUD for monitoring sites & AOIs.
+Uses persistent site_store for reliable real-site management, custom monitoring durations,
+and Belagavi district real-site monitoring.
 """
 from __future__ import annotations
 
 import json
-import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Site, SiteStatus
 from app.schemas import SiteCreate, SiteListResponse, SiteResponse, SiteUpdate
-from app.services.geometry import validate_and_normalize_geometry
-from app.services.demo_data import DEMO_SITES
+from app.services.site_store import add_site, delete_site as remove_site, load_sites
+
 
 router = APIRouter(prefix="/sites", tags=["Sites"])
 
 
+def _to_site_response(s: dict) -> SiteResponse:
+    # Ensure datetime parsing for ISO strings
+    created = s.get("created_at")
+    if isinstance(created, str):
+        try:
+            created = datetime.fromisoformat(created)
+        except Exception:
+            created = datetime.utcnow()
+    elif not created:
+        created = datetime.utcnow()
+
+    updated = s.get("updated_at")
+    if isinstance(updated, str):
+        try:
+            updated = datetime.fromisoformat(updated)
+        except Exception:
+            updated = datetime.utcnow()
+    elif not updated:
+        updated = datetime.utcnow()
+
+    end_date = s.get("monitoring_end_date")
+    if isinstance(end_date, str):
+        try:
+            end_date = datetime.fromisoformat(end_date)
+        except Exception:
+            end_date = None
+
+    return SiteResponse(
+        id=s["id"],
+        name=s["name"],
+        description=s.get("description"),
+        area_name=s.get("area_name"),
+        latitude=s.get("latitude"),
+        longitude=s.get("longitude"),
+        geometry=s["geometry"],
+        area_ha=s.get("area_ha"),
+        status=s.get("status", "active"),
+        is_demo=bool(s.get("is_demo", False)),
+        monitoring_enabled=bool(s.get("monitoring_enabled", True)),
+        monitoring_duration_months=s.get("monitoring_duration_months", 3),
+        monitoring_end_date=end_date,
+        monitoring_interval_days=s.get("monitoring_interval_days", 5),
+        cloud_threshold=float(s.get("cloud_threshold", 25.0)),
+        min_valid_pixels=float(s.get("min_valid_pixels", 75.0)),
+        risk_threshold=int(s.get("risk_threshold", 40)),
+        created_at=created,
+        updated_at=updated,
+    )
+
+
 @router.get("", response_model=SiteListResponse)
 async def list_sites(
-    db: Annotated[AsyncSession | None, Depends(get_db)],
-    include_demo: bool = Query(default=True),
-    status_filter: str | None = Query(default=None),
+    db: Annotated[AsyncSession | None, Depends(get_db)] = None,
+    include_demo: bool = Query(default=False),
+    status_filter: Optional[str] = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> SiteListResponse:
-    """List all monitoring sites."""
-    if db is None:
-        # Fallback for standalone demo mode without Postgres container
-        demo_items = [
-            SiteResponse(
-                id=f"demo-site-{i+1}",
-                name=ds["name"],
-                description=ds["description"],
-                geometry=ds["geometry"],
-                area_ha=ds["area_ha"],
-                status="active",
-                is_demo=True,
-                monitoring_enabled=True,
-                monitoring_interval_days=5,
-                cloud_threshold=20.0,
-                min_valid_pixels=80.0,
-                risk_threshold=50,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            for i, ds in enumerate(DEMO_SITES)
-        ]
-        return SiteListResponse(total=len(demo_items), items=demo_items)
+    """List all active real monitoring sites (demo sites excluded by default)."""
+    all_sites = load_sites()
 
-    try:
-        q = select(Site).where(Site.deleted_at.is_(None))
-        if not include_demo:
-            q = q.where(Site.is_demo == False)  # noqa: E712
-        if status_filter:
-            q = q.where(Site.status == status_filter)
+    # Filter out demo sites unless explicitly requested
+    filtered = [
+        s for s in all_sites
+        if (include_demo or not s.get("is_demo", False))
+        and (not status_filter or s.get("status") == status_filter)
+    ]
 
-        total_q = select(func.count()).select_from(q.subquery())
-        total = (await db.execute(total_q)).scalar() or 0
+    total = len(filtered)
+    paged = filtered[skip : skip + limit]
 
-        result = await db.execute(q.offset(skip).limit(limit))
-        sites = result.scalars().all()
-
-        return SiteListResponse(
-            total=total,
-            items=[_serialize_site(s) for s in sites],
-        )
-    except Exception:
-        # Fallback if DB query fails
-        demo_items = [
-            SiteResponse(
-                id=f"demo-site-{i+1}",
-                name=ds["name"],
-                description=ds["description"],
-                geometry=ds["geometry"],
-                area_ha=ds["area_ha"],
-                status="active",
-                is_demo=True,
-                monitoring_enabled=True,
-                monitoring_interval_days=5,
-                cloud_threshold=20.0,
-                min_valid_pixels=80.0,
-                risk_threshold=50,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            for i, ds in enumerate(DEMO_SITES)
-        ]
-        return SiteListResponse(total=len(demo_items), items=demo_items)
+    return SiteListResponse(
+        total=total,
+        items=[_to_site_response(s) for s in paged],
+    )
 
 
 @router.post("", response_model=SiteResponse, status_code=status.HTTP_201_CREATED)
 async def create_site(
     payload: SiteCreate,
-    db: Annotated[AsyncSession | None, Depends(get_db)],
+    db: Annotated[AsyncSession | None, Depends(get_db)] = None,
 ) -> SiteResponse:
-    """Create a new monitoring site with an AOI polygon."""
-    try:
-        geojson_str = json.dumps(payload.geometry.model_dump())
-        normalized_wkt, area_ha = validate_and_normalize_geometry(geojson_str)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+    """
+    Create a new real monitoring site.
+    Supports monitoring duration (e.g. 1 month, 3 months, 6 months) and lat/long coordinates.
+    """
+    raw_payload = payload.model_dump()
+    if payload.geometry:
+        raw_payload["geometry"] = payload.geometry.model_dump()
 
-    if db is None:
-        # Return in-memory created site response when DB offline
-        return SiteResponse(
-            id=str(uuid.uuid4()),
-            name=payload.name,
-            description=payload.description,
-            geometry=payload.geometry.model_dump(),
-            area_ha=area_ha,
-            status="active",
-            is_demo=True,
-            monitoring_enabled=True,
-            monitoring_interval_days=payload.monitoring_interval_days,
-            cloud_threshold=payload.cloud_threshold,
-            min_valid_pixels=payload.min_valid_pixels,
-            risk_threshold=payload.risk_threshold,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-
-    site = Site(
-        id=str(uuid.uuid4()),
-        name=payload.name,
-        description=payload.description,
-        geometry=f"SRID=4326;{normalized_wkt}",
-        area_ha=area_ha,
-        monitoring_interval_days=payload.monitoring_interval_days,
-        cloud_threshold=payload.cloud_threshold,
-        min_valid_pixels=payload.min_valid_pixels,
-        risk_threshold=payload.risk_threshold,
-    )
-    db.add(site)
-    await db.flush()
-    await db.refresh(site)
-    return _serialize_site(site)
+    created = add_site(raw_payload)
+    return _to_site_response(created)
 
 
 @router.get("/{site_id}", response_model=SiteResponse)
-async def get_site(
-    site_id: str,
-    db: Annotated[AsyncSession | None, Depends(get_db)],
-) -> SiteResponse:
-    """Get a single monitoring site by ID."""
-    if db is None:
-        ds = DEMO_SITES[0]
-        return SiteResponse(
-            id=site_id,
-            name=ds["name"],
-            description=ds["description"],
-            geometry=ds["geometry"],
-            area_ha=ds["area_ha"],
-            status="active",
-            is_demo=True,
-            monitoring_enabled=True,
-            monitoring_interval_days=5,
-            cloud_threshold=20.0,
-            min_valid_pixels=80.0,
-            risk_threshold=50,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-    site = await _get_site_or_404(site_id, db)
-    return _serialize_site(site)
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-async def _get_site_or_404(site_id: str, db: AsyncSession) -> Site:
-    result = await db.execute(
-        select(Site).where(Site.id == site_id, Site.deleted_at.is_(None))
-    )
-    site = result.scalar_one_or_none()
-    if site is None:
+async def get_site(site_id: str) -> SiteResponse:
+    """Get site details by ID."""
+    sites = load_sites()
+    match = next((s for s in sites if s["id"] == site_id), None)
+    if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Site {site_id!r} not found.",
+            detail=f"Monitoring site '{site_id}' not found.",
         )
-    return site
+    return _to_site_response(match)
 
 
-def _serialize_site(site: Site) -> SiteResponse:
-    from geoalchemy2.shape import to_shape
-    geom_dict: dict = {}
-    if site.geometry is not None:
-        try:
-            geom_shape = to_shape(site.geometry)
-            geom_dict = {
-                "type": geom_shape.geom_type,
-                "coordinates": list(geom_shape.__geo_interface__["coordinates"]),
-            }
-        except Exception:
-            geom_dict = {}
-
-    return SiteResponse(
-        id=site.id,
-        name=site.name,
-        description=site.description,
-        geometry=geom_dict,
-        area_ha=site.area_ha,
-        status=site.status,
-        is_demo=site.is_demo,
-        monitoring_enabled=site.monitoring_enabled,
-        monitoring_interval_days=site.monitoring_interval_days,
-        cloud_threshold=site.cloud_threshold,
-        min_valid_pixels=site.min_valid_pixels,
-        risk_threshold=site.risk_threshold,
-        created_at=site.created_at,
-        updated_at=site.updated_at,
-    )
+@router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_monitoring_site(site_id: str) -> None:
+    """Remove a site from monitoring."""
+    success = remove_site(site_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Monitoring site '{site_id}' not found.",
+        )

@@ -27,17 +27,24 @@ class GeometrySchema(BaseModel):
 class SiteCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
-    geometry: GeometrySchema
+    area_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    radius_meters: float | None = Field(default=1000.0, ge=100.0, le=50000.0)
+    geometry: GeometrySchema | None = None
+    monitoring_duration_months: int = Field(default=3, ge=1, le=60)
     monitoring_interval_days: int = Field(default=5, ge=1, le=365)
-    cloud_threshold: float = Field(default=60.0, ge=0.0, le=100.0)
-    min_valid_pixels: float = Field(default=40.0, ge=0.0, le=100.0)
-    risk_threshold: int = Field(default=25, ge=0, le=100)
+    cloud_threshold: float = Field(default=25.0, ge=0.0, le=100.0)
+    min_valid_pixels: float = Field(default=75.0, ge=0.0, le=100.0)
+    risk_threshold: int = Field(default=40, ge=0, le=100)
 
 
 class SiteUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
+    area_name: str | None = None
     monitoring_enabled: bool | None = None
+    monitoring_duration_months: int | None = Field(None, ge=1, le=60)
     monitoring_interval_days: int | None = Field(None, ge=1, le=365)
     cloud_threshold: float | None = Field(None, ge=0.0, le=100.0)
     min_valid_pixels: float | None = Field(None, ge=0.0, le=100.0)
@@ -48,11 +55,16 @@ class SiteResponse(BaseModel):
     id: str
     name: str
     description: str | None
+    area_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     geometry: dict[str, Any]
     area_ha: float | None
     status: str
     is_demo: bool
     monitoring_enabled: bool
+    monitoring_duration_months: int | None = 3
+    monitoring_end_date: datetime | None = None
     monitoring_interval_days: int
     cloud_threshold: float
     min_valid_pixels: float

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "KSPCB-BLG-2026-0042",
+    "site_id": "site-ghataprabha-gokak",
+    "site_name": "Ghataprabha River Basin Sand Reach (Gokak Sector)",
+    "area_name": "Gokak Taluk, Belagavi District",
+    "latitude": 16.1685,
+    "longitude": 74.8352,
+    "target_authority": "Karnataka State Pollution Control Board (KSPCB) Regional Office & District Mines Department, Belagavi",
+    "change_type": "Unauthorized Riverbed Sand Extraction",
+    "severity": "CRITICAL",
+    "status": "Filed - Inspection Requested",
+    "urgency": "Immediate (Within 48 hours)",
+    "statutory_violation": "Karnataka Minor Mineral Concession Rules (Rule 31R) & Environment Protection Act 1986",
+    "summary": "Deep Siamese ResNet-18 neural detection identified physical excavation disturbance on Ghataprabha riverbank. Ground texture and edge continuity disrupted with heavy vehicle ingress. Requesting on-site physical inspection and boundary pegging.",
+    "created_at": "2026-11-09T20:18:54.635287"
+  }
+]

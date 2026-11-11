@@ -33,17 +33,66 @@ export interface Site {
   id: string;
   name: string;
   description: string | null;
+  area_name?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   geometry: GeoJSONGeometry;
   area_ha: number | null;
   status: string;
   is_demo: boolean;
   monitoring_enabled: boolean;
+  monitoring_duration_months?: number;
+  monitoring_end_date?: string | null;
   monitoring_interval_days: number;
   cloud_threshold: number;
   min_valid_pixels: number;
   risk_threshold: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface Complaint {
+  id: string;
+  site_id?: string;
+  site_name: string;
+  area_name: string;
+  latitude: number;
+  longitude: number;
+  target_authority: string;
+  change_type: string;
+  severity: string;
+  status: string;
+  urgency: string;
+  statutory_violation: string;
+  summary: string;
+  officer_notes?: string;
+  created_at: string;
+}
+
+export interface ForensicReport {
+  report_id: string;
+  generated_at: string;
+  site_name: string;
+  area_name: string;
+  latitude: number;
+  longitude: number;
+  coordinates_formatted: string;
+  before_date: string;
+  after_date: string;
+  timeline_duration: string;
+  change_probability: number;
+  severity: string;
+  change_type: string;
+  deep_architecture: string;
+  edge_correlation?: number | null;
+  deep_similarity?: number | null;
+  ai_vision_analysis: string;
+  ai_model_used: string;
+  complaint_id?: string | null;
+  target_authority: string;
+  recommended_field_actions: string[];
+  before_image?: string | null;
+  after_image: string;
 }
 
 export interface SiteListResponse {

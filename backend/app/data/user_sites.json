@@ -1,0 +1,143 @@
+[
+  {
+    "id": "site-ghataprabha-gokak",
+    "name": "Ghataprabha River Basin Sand Reach (Gokak Sector)",
+    "description": "Active riparian monitoring corridor along the Ghataprabha River near Gokak Falls. Monitored for mechanized sand mining and riverbed geometry disruption under Karnataka Minor Mineral Concession Rules.",
+    "area_name": "Gokak Taluk, Belagavi District",
+    "latitude": 16.1685,
+    "longitude": 74.8352,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            74.825,
+            16.155
+          ],
+          [
+            74.845,
+            16.155
+          ],
+          [
+            74.845,
+            16.175
+          ],
+          [
+            74.825,
+            16.175
+          ],
+          [
+            74.825,
+            16.155
+          ]
+        ]
+      ]
+    },
+    "area_ha": 440.0,
+    "status": "active",
+    "is_demo": false,
+    "monitoring_enabled": true,
+    "monitoring_interval_days": 5,
+    "monitoring_duration_months": 3,
+    "monitoring_end_date": "2027-02-09T20:18:54.635244",
+    "cloud_threshold": 20.0,
+    "min_valid_pixels": 80.0,
+    "risk_threshold": 45,
+    "created_at": "2026-11-11T20:18:54.635257",
+    "updated_at": "2026-11-11T20:18:54.635260"
+  },
+  {
+    "id": "site-bailhongal-malaprabha",
+    "name": "Malaprabha River Wetland & Riparian Buffer (Bailhongal)",
+    "description": "Wetland and riverbed conservation zone on the Malaprabha River near Bailhongal. Monitored for illegal soil excavation, brick kiln expansion, and embankment cutting.",
+    "area_name": "Bailhongal Taluk, Belagavi District",
+    "latitude": 15.815,
+    "longitude": 74.865,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            74.855,
+            15.805
+          ],
+          [
+            74.875,
+            15.805
+          ],
+          [
+            74.875,
+            15.825
+          ],
+          [
+            74.855,
+            15.825
+          ],
+          [
+            74.855,
+            15.805
+          ]
+        ]
+      ]
+    },
+    "area_ha": 440.0,
+    "status": "active",
+    "is_demo": false,
+    "monitoring_enabled": true,
+    "monitoring_interval_days": 5,
+    "monitoring_duration_months": 6,
+    "monitoring_end_date": "2027-05-10T20:18:54.635266",
+    "cloud_threshold": 25.0,
+    "min_valid_pixels": 75.0,
+    "risk_threshold": 40,
+    "created_at": "2026-11-11T20:18:54.635270",
+    "updated_at": "2026-11-11T20:18:54.635272"
+  },
+  {
+    "id": "site-khanapur-western-ghats",
+    "name": "Khanapur Western Ghats Eco-Sensitive Forest Buffer",
+    "description": "Buffer zone bordering Bhimgad Wildlife Sanctuary in Khanapur Taluk. Monitored for unpermitted tree canopy clearance, laterite stone quarrying, and forest border encroachment.",
+    "area_name": "Khanapur Taluk, Belagavi District",
+    "latitude": 15.632,
+    "longitude": 74.512,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            74.502,
+            15.622
+          ],
+          [
+            74.522,
+            15.622
+          ],
+          [
+            74.522,
+            15.642
+          ],
+          [
+            74.502,
+            15.642
+          ],
+          [
+            74.502,
+            15.622
+          ]
+        ]
+      ]
+    },
+    "area_ha": 440.0,
+    "status": "active",
+    "is_demo": false,
+    "monitoring_enabled": true,
+    "monitoring_interval_days": 5,
+    "monitoring_duration_months": 12,
+    "monitoring_end_date": "2027-11-11T20:18:54.635276",
+    "cloud_threshold": 30.0,
+    "min_valid_pixels": 70.0,
+    "risk_threshold": 35,
+    "created_at": "2026-11-11T20:18:54.635279",
+    "updated_at": "2026-11-11T20:18:54.635282"
+  }
+]

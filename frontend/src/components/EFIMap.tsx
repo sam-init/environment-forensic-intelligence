@@ -645,65 +645,9 @@ export function EFIMap({
         </div>
       )}
 
-      {/* Geographical Location & Administrative Context Badge */}
-      <div className="map-admin-badge" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="map-admin-badge-icon" aria-hidden="true">
-          <MapPin size={13} style={{ color: '#a855f7' }} />
-        </div>
-        <div className="map-admin-badge-content">
-          <div className="map-admin-badge-main">
-            <span className="map-admin-area" title="Area / Locality">{locationInfo.area}</span>
-            <span className="map-admin-sep">·</span>
-            <span className="map-admin-district" title="District">{locationInfo.district}</span>
-          </div>
-          <div className="map-admin-badge-sub">
-            <span className="map-admin-state">{locationInfo.state}, {locationInfo.country}</span>
-            {currentCenter && (
-              <span className="map-admin-coords">
-                ({currentCenter[1].toFixed(3)}°N, {currentCenter[0].toFixed(3)}°E)
-              </span>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          className="map-district-badge-btn"
-          onClick={() => {
-            const map = compareMode ? beforeMapRef.current : singleMapRef.current;
-            if (map) {
-              map.flyTo({ center: [74.50, 15.85], zoom: 9.3, duration: 1000 });
-            }
-          }}
-          title="Belagavi District (13,415 km² · 13,950 1km grid cells) — click to focus"
-          aria-label="Belagavi District Selected"
-        >
-          <span className="map-district-badge-dot" />
-          <span>District: <strong>Belagavi</strong></span>
-        </button>
-        <button
-          type="button"
-          className={`map-labels-toggle-btn ${effectiveShowLabels ? 'active' : ''}`}
-          onClick={() => handleToggleLabels(!effectiveShowLabels)}
-          title={effectiveShowLabels ? 'Area & District labels visible on map — click to hide' : 'Area & District labels hidden — click to show'}
-          aria-label="Toggle map area and district labels"
-        >
-          <Tag size={11} />
-          <span>{effectiveShowLabels ? 'Labels ON' : 'Labels OFF'}</span>
-        </button>
-        <button
-          type="button"
-          className={`map-labels-toggle-btn ${effectiveShowGrid ? 'active-grid' : ''}`}
-          onClick={() => handleToggleGrid(!effectiveShowGrid)}
-          title={effectiveShowGrid ? '1 km Belagavi grid visible on map — click to hide' : '1 km Belagavi grid hidden — click to show'}
-          aria-label="Toggle 1x1 km Belagavi grid overlay"
-        >
-          <Grid3x3 size={11} />
-          <span>{effectiveShowGrid ? '1km Grid: ON' : '1km Grid: OFF'}</span>
-        </button>
-      </div>
-
-      {/* Place / district / state search */}
-      <div className="map-search" onMouseDown={(e) => e.stopPropagation()}>
+      {/* Sleek unified top control bar */}
+      <div className="map-top-bar" onMouseDown={(e) => e.stopPropagation()}>
+        {/* Left: Place search */}
         <div className="map-search-box">
           <Search size={14} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
           <input
@@ -717,8 +661,8 @@ export function EFIMap({
                 handleSearchSelect(searchResults[0]);
               }
             }}
-            placeholder="Search place, district or state…"
-            aria-label="Search place, district or state"
+            placeholder="Search place in Belagavi…"
+            aria-label="Search place in Belagavi"
           />
           {searching && <div className="loading-spinner" style={{ width: 10, height: 10, borderWidth: 1, flexShrink: 0 }} />}
           {searchQuery && !searching && (
@@ -735,25 +679,86 @@ export function EFIMap({
               <X size={12} />
             </button>
           )}
+
+          {searchOpen && !searching && (
+            <div className="map-search-results">
+              {searchResults.length === 0 ? (
+                <div className="map-search-empty">No places found</div>
+              ) : (
+                searchResults.map((feature, index) => (
+                  <button
+                    key={`${feature.geometry.coordinates.join(',')}-${index}`}
+                    className="map-search-result"
+                    onClick={() => handleSearchSelect(feature)}
+                  >
+                    <div className="map-search-result-name">{feature.properties.name ?? 'Unnamed place'}</div>
+                    <div className="map-search-result-detail">{photonDetail(feature.properties)}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
-        {searchOpen && !searching && (
-          <div className="map-search-results">
-            {searchResults.length === 0 ? (
-              <div className="map-search-empty">No places found</div>
-            ) : (
-              searchResults.map((feature, index) => (
-                <button
-                  key={`${feature.geometry.coordinates.join(',')}-${index}`}
-                  className="map-search-result"
-                  onClick={() => handleSearchSelect(feature)}
-                >
-                  <div className="map-search-result-name">{feature.properties.name ?? 'Unnamed place'}</div>
-                  <div className="map-search-result-detail">{photonDetail(feature.properties)}</div>
-                </button>
-              ))
-            )}
-          </div>
+        {/* Right: Actions and District Focus */}
+        <div className="map-top-actions">
+          <button
+            type="button"
+            className="map-district-badge-btn"
+            onClick={() => {
+              const map = compareMode ? beforeMapRef.current : singleMapRef.current;
+              if (map) {
+                map.flyTo({ center: [74.50, 15.85], zoom: 9.3, duration: 800 });
+              }
+            }}
+            title={`Belagavi District (13,415 km² · 13,950 1km grid cells) — click to focus`}
+            aria-label="Focus Belagavi District"
+          >
+            <span className="map-district-badge-dot" />
+            <span>District: <strong>Belagavi</strong></span>
+          </button>
+
+          <button
+            type="button"
+            className={`map-labels-toggle-btn ${effectiveShowLabels ? 'active' : ''}`}
+            onClick={() => handleToggleLabels(!effectiveShowLabels)}
+            title={effectiveShowLabels ? 'Area & District labels visible on map — click to hide' : 'Area & District labels hidden — click to show'}
+            aria-label="Toggle map area and district labels"
+          >
+            <Tag size={11} />
+            <span>{effectiveShowLabels ? 'Labels ON' : 'Labels OFF'}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`map-labels-toggle-btn ${effectiveShowGrid ? 'active-grid' : ''}`}
+            onClick={() => {
+              const next = !effectiveShowGrid;
+              handleToggleGrid(next);
+              if (next) {
+                const map = compareMode ? beforeMapRef.current : singleMapRef.current;
+                if (map && map.getZoom() < 10.5) {
+                  map.flyTo({ zoom: 11, duration: 800 });
+                }
+              }
+            }}
+            title={effectiveShowGrid ? '1 km Belagavi grid visible — click to hide' : '1 km Belagavi grid hidden — click to show and focus grid'}
+            aria-label="Toggle 1x1 km Belagavi grid overlay"
+          >
+            <Grid3x3 size={11} />
+            <span>{effectiveShowGrid ? '1km Grid: ON' : '1km Grid: OFF'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Floating Bottom HUD with live location context */}
+      <div className="map-bottom-hud" onMouseDown={(e) => e.stopPropagation()}>
+        <MapPin size={11} style={{ color: '#a855f7' }} />
+        <span>{locationInfo.area ? `${locationInfo.area} · ` : ''}{locationInfo.district}, {locationInfo.state}</span>
+        {currentCenter && (
+          <span className="map-bottom-coords">
+            {currentCenter[1].toFixed(3)}°N, {currentCenter[0].toFixed(3)}°E
+          </span>
         )}
       </div>
     </div>
@@ -890,9 +895,10 @@ function renderGridLayers(
       id: fillLayer,
       type: 'fill',
       source: sourceId,
+      minzoom: 10,
       paint: {
         'fill-color': '#06b6d4',
-        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.25, 0.04],
+        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.25, 0.02],
       },
     },
     beforeLayer,
@@ -903,10 +909,21 @@ function renderGridLayers(
       id: lineLayer,
       type: 'line',
       source: sourceId,
+      minzoom: 10,
       paint: {
-        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(6,182,212,0.85)'],
-        'line-width': ['case', ['==', ['get', 'tile_id'], selectedId], 2.5, 0.85],
-        'line-opacity': 0.95,
+        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(6,182,212,0.65)'],
+        'line-width': [
+          'interpolate', ['linear'], ['zoom'],
+          10, 0.4,
+          12, 0.85,
+          14, 1.4,
+        ],
+        'line-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          9.9, 0,
+          10.4, 0.35,
+          12, 0.85,
+        ],
       },
     },
     beforeLayer,

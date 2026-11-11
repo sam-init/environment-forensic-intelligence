@@ -1662,10 +1662,9 @@ input, textarea {
 .map-search {
   position: absolute;
   top: var(--space-3);
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--space-3);
   z-index: 30;
-  width: min(420px, calc(100% - var(--space-6)));
+  width: min(290px, calc(100vw - 320px));
 }
 
 .map-search-box {
@@ -2119,23 +2118,74 @@ input, textarea {
   animation: fadeInUp 0.4s var(--ease-out-cubic) both;
 }
 
-/* ── Map Administrative Context Badge & Label Toggle ────────────────────────── */
-.map-admin-badge {
+/* ── Unified Top Control Bar ─────────────────────────────────────────────── */
+.map-top-bar {
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
+  right: var(--space-3);
   z-index: 30;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 6px 12px;
+  pointer-events: none;
+}
+
+.map-top-bar > * {
+  pointer-events: auto;
+}
+
+.map-top-bar .map-search-box {
+  width: 250px;
+  max-width: 40vw;
   background: rgba(8, 10, 14, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(14px);
-  max-width: min(380px, calc(100% - 24px));
-  animation: fadeInDown 0.2s var(--ease-out-cubic) both;
+  position: relative;
+}
+
+.map-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(8, 10, 14, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md);
+  padding: 4px 6px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+}
+
+/* ── Bottom Map HUD ──────────────────────────────────────────────────────── */
+.map-bottom-hud {
+  position: absolute;
+  bottom: 38px;
+  left: var(--space-3);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(8, 10, 14, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.map-bottom-coords {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #c084fc;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  padding-left: 6px;
+  margin-left: 2px;
 }
 
 .map-admin-badge-icon {

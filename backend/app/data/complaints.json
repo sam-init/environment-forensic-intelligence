@@ -1,5 +1,22 @@
 [
   {
+    "id": "KSPCB-BLG-2026-C55F",
+    "site_id": "BEL-1000m-447-1749",
+    "site_name": "Monitored Land Parcel BEL-1000m-447-1749",
+    "area_name": "Belagavi, Belagavi District, Karnataka",
+    "latitude": 15.824021355024911,
+    "longitude": 74.51018401719705,
+    "target_authority": "Karnataka State Pollution Control Board (KSPCB) Regional Office & Department of Mines & Geology (DMG), Belagavi",
+    "change_type": "Unpermitted Ground Excavation / Sand Extraction",
+    "severity": "CRITICAL",
+    "status": "Filed - Inspection Requested",
+    "urgency": "Urgent (Within 72 Hours)",
+    "statutory_violation": "Karnataka Minor Mineral Concession Rules 1994 (Rule 31R) & Environment (Protection) Act 1986",
+    "summary": "Autonomous Siamese ResNet-18 satellite surveillance identified ground disruption at coordinates 15.82402\u00b0N, 74.51018\u00b0E (100.0% change probability). Requesting physical field verification and boundary pegging by the District Mining Task Force.",
+    "officer_notes": "",
+    "created_at": "2026-11-11T20:33:00.323514"
+  },
+  {
     "id": "KSPCB-BLG-2026-0042",
     "site_id": "site-ghataprabha-gokak",
     "site_name": "Ghataprabha River Basin Sand Reach (Gokak Sector)",

@@ -106,6 +106,13 @@ class ChangeDetectorInference:
         calibrated_prob = float(0.40 * raw_prob_changed + 0.60 * structural_score)
         calibrated_prob = float(np.clip((calibrated_prob - 0.20) / 0.65, 0.0, 1.0))
 
+        # Semantic Invariance Gate: If ResNet deep feature representations correlate strongly (deep_sim >= 0.88),
+        # the high-level terrain structures (roads, tree canopy, field lines) are intact.
+        # Dampen spurious sensor/lighting/resolution false alarms so natural land remains UNCHANGED.
+        if deep_sim >= 0.88:
+            calibrated_prob = min(calibrated_prob, 0.35 * (1.0 - (deep_sim - 0.88) / 0.12))
+            calibrated_prob = max(0.0, float(calibrated_prob))
+
         is_changed = calibrated_prob >= threshold
         label = "CHANGED" if is_changed else "UNCHANGED"
 

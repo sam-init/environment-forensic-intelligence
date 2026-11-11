@@ -101,6 +101,7 @@ function Navbar() {
       <ul className="lp-nav__links" role="list">
         {[
           { label: 'Overview', id: 'approach' },
+          { label: 'Surveillance', id: 'surveillance' },
           { label: 'How It Works', id: 'workflow' },
           { label: 'Capabilities', id: 'capabilities' },
           { label: 'About', id: 'about' },
@@ -140,17 +141,18 @@ function HeroSection() {
 
   return (
     <section className="lp-hero" aria-label="Hero — EFI platform overview">
-      {/* Background image */}
+      {/* Background satellite video with image fallback */}
       <div className="lp-hero__bg" aria-hidden="true">
-        <img
-          src="/images/hero-satellite.jpg"
-          alt=""
-          className="lp-hero__img"
-          width="1920"
-          height="1080"
-          // eslint-disable-next-line react/no-unknown-property
-          {...({ fetchpriority: 'high' } as Record<string, string>)}
-        />
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="lp-hero__video"
+          poster="/images/hero-satellite.jpg"
+        >
+          <source src="/video/satellite-india.mp4" type="video/mp4" />
+        </video>
         <div className="lp-hero__scrim" />
 
         {/* Analytical SVG overlay */}
@@ -343,6 +345,91 @@ function ApproachSection() {
               <p className="lp-approach__card-desc">{desc}</p>
             </article>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Physical Ground-Truth Mining Video Section ───────────────── */
+function MiningVideoSection() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play();
+      setIsPlaying(true);
+    } else {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  return (
+    <section className="lp-section lp-mining-section" id="surveillance" aria-label="Physical ground truth mining surveillance">
+      <div className="lp-container">
+        <div className="lp-mining__header lp-reveal">
+          <div className="lp-eyebrow">Ground-Truth Surveillance</div>
+          <h2 className="lp-mining__headline">
+            Correlating Orbital Change to Heavy Excavation Reality.
+          </h2>
+          <p className="lp-mining__sub">
+            Satellite sensors detect surface reflectance anomalies from orbit, while ground operations involve massive earthmoving machinery, open-pit quarrying, and riverbed disruption.
+          </p>
+        </div>
+
+        <div className="lp-mining__player-wrapper lp-reveal lp-reveal-delay-1">
+          <div className="lp-mining__player">
+            <video
+              ref={videoRef}
+              src="/video/mining-quarry.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="lp-mining__video"
+            />
+            <div className="lp-mining__hud">
+              <div className="lp-mining__hud-tag">
+                <span className="lp-mining__hud-dot" />
+                <span>GROUND RECONNAISSANCE · ACTIVE HEAVY MACHINERY EXCAVATION</span>
+              </div>
+              <button
+                type="button"
+                className="lp-mining__play-btn"
+                onClick={togglePlay}
+                aria-label={isPlaying ? 'Pause video' : 'Play video'}
+              >
+                {isPlaying ? 'Pause Feed' : 'Resume Feed'}
+              </button>
+            </div>
+          </div>
+
+          <div className="lp-mining__grid">
+            <div className="lp-mining__card">
+              <div className="lp-mining__card-num">01</div>
+              <h3 className="lp-mining__card-title">Riparian & Riverbed Extraction</h3>
+              <p className="lp-mining__card-desc">
+                Continuous surveillance along Ghataprabha and Malaprabha rivers identifies unpermitted sediment scraping, dredging channels, and heavy haulage routes.
+              </p>
+            </div>
+            <div className="lp-mining__card">
+              <div className="lp-mining__card-num">02</div>
+              <h3 className="lp-mining__card-title">Laterite & Stone Quarry Progression</h3>
+              <p className="lp-mining__card-desc">
+                Multi-temporal deep neural differencing tracks open-pit perimeter expansion, hill-cutting volume, and buffer zone boundary breaches.
+              </p>
+            </div>
+            <div className="lp-mining__card">
+              <div className="lp-mining__card-num">03</div>
+              <h3 className="lp-mining__card-title">Statutory Enforcement Routing</h3>
+              <p className="lp-mining__card-desc">
+                Generates formal inspection notices and forensic PDF dockets directly dispatched to the Karnataka State Pollution Control Board and District Mining Authorities.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -847,6 +934,7 @@ export function LandingPage() {
         <HeroSection />
         <ProblemSection />
         <ApproachSection />
+        <MiningVideoSection />
         <WorkflowSection />
         <ComparisonSection />
         <CapabilitiesSection />

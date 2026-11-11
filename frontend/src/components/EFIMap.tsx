@@ -365,12 +365,34 @@ export function EFIMap({
         }
       });
 
-      // Force MapLibre to paint a clean frame with raw satellite tiles
-      map1.triggerRepaint();
-      map2.triggerRepaint();
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      // Force MapLibre to paint a clean frame with raw satellite tiles and wait for the render event
+      const awaitCleanRender = (map: maplibregl.Map) => {
+        return new Promise<void>((resolve) => {
+          let done = false;
+          const handler = () => {
+            if (!done) {
+              done = true;
+              map.off('render', handler);
+              resolve();
+            }
+          };
+          map.on('render', handler);
+          map.triggerRepaint();
+          setTimeout(() => {
+            if (!done) {
+              done = true;
+              map.off('render', handler);
+              resolve();
+            }
+          }, 400);
+        });
+      };
 
-      // Snapshot the clean satellite crops
+      await Promise.all([awaitCleanRender(map1), awaitCleanRender(map2)]);
+      // Small pause to guarantee WebGL framebuffer swap
+      await new Promise((r) => setTimeout(r, 60));
+
+      // Snapshot the clean satellite crops (pure terrain, no vector highlight overlays)
       const beforeImg = captureMapCrop(map1, bbox);
       const afterImg = captureMapCrop(map2, bbox);
 

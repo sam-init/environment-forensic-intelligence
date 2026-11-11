@@ -27,14 +27,6 @@ export function Header() {
 
   return (
     <>
-      {isDemoMode && !isLanding && (
-        <div className="demo-banner" role="alert" aria-live="polite">
-          <Activity size={11} aria-hidden="true" />
-          <strong>DEMO MODE</strong>
-          <span> — All displayed events are synthetic demonstration data. Not real environmental incidents.</span>
-        </div>
-      )}
-
       <header className="header" role="banner">
         {/* Wordmark */}
         <NavLink

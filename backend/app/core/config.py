@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production"] = "development"
     app_secret_key: str = "dev-insecure-secret-change-in-production"
     app_debug: bool = True
-    demo_mode: bool = True
+    demo_mode: bool = False
 
     # ── Database ─────────────────────────────────────────────────
     database_url: str = (

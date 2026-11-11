@@ -2162,7 +2162,7 @@ input, textarea {
 /* ── Bottom Map HUD ──────────────────────────────────────────────────────── */
 .map-bottom-hud {
   position: absolute;
-  bottom: 38px;
+  bottom: 52px;
   left: var(--space-3);
   z-index: 20;
   display: flex;

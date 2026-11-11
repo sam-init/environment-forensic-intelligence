@@ -140,7 +140,8 @@ export function useLocationInfo(center?: [number, number] | null): LocationInfo 
           } else if (p.district && p.district.toLowerCase().includes('district')) {
             resolvedDistrict = p.district;
           } else if (p.county) {
-            resolvedDistrict = `${p.county.replace(/taluk|taluku/i, '').trim()} District`;
+            const cleanCounty = p.county.replace(/\s*(taluku|taluk|tehsil|mandal|district)\s*/gi, '').trim();
+            resolvedDistrict = cleanCounty ? `${cleanCounty} District` : fb.district;
           }
 
           const resolvedState = p.state || fb.state || 'Karnataka';

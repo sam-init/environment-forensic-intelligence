@@ -754,7 +754,7 @@ export function EFIMap({
       {/* Floating Bottom HUD with live location context */}
       <div className="map-bottom-hud" onMouseDown={(e) => e.stopPropagation()}>
         <MapPin size={11} style={{ color: '#a855f7' }} />
-        <span>{locationInfo.area ? `${locationInfo.area} · ` : ''}{locationInfo.district}, {locationInfo.state}</span>
+        <span>{locationInfo.area || 'Belagavi Region'} · {locationInfo.district.replace(/\s*District/i, '')} District, {locationInfo.state}</span>
         {currentCenter && (
           <span className="map-bottom-coords">
             {currentCenter[1].toFixed(3)}°N, {currentCenter[0].toFixed(3)}°E

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -80,6 +82,72 @@ async def generate_belagavi_grid(
     }
 
 
+_cached_fallback_grid: dict[str, Any] | None = None
+_GRID_DATA_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "belagavi_1km_grid.json"
+
+
+def _get_fast_belagavi_grid(tile_size_m: int = 1000) -> dict[str, Any]:
+    global _cached_fallback_grid
+    if _cached_fallback_grid is not None:
+        return _cached_fallback_grid
+
+    if _GRID_DATA_FILE.exists():
+        try:
+            with open(_GRID_DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            _cached_fallback_grid = data
+            return _cached_fallback_grid
+        except Exception:
+            pass
+
+    step_lat = 0.008993
+    step_lon = 0.009347
+    min_lon, max_lon = 74.05, 75.45
+    min_lat, max_lat = 15.35, 16.95
+
+    features = []
+    x = min_lon
+    idx = 0
+    while x < max_lon:
+        y = min_lat
+        while y < max_lat:
+            poly = [
+                [
+                    [round(x, 5), round(y, 5)],
+                    [round(x + step_lon, 5), round(y, 5)],
+                    [round(x + step_lon, 5), round(y + step_lat, 5)],
+                    [round(x, 5), round(y + step_lat, 5)],
+                    [round(x, 5), round(y, 5)],
+                ]
+            ]
+            tile_id = f"BEL-1KM-{idx:05d}"
+            features.append({
+                "type": "Feature",
+                "id": tile_id,
+                "properties": {
+                    "tile_id": tile_id,
+                    "tile_size_m": tile_size_m,
+                    "area_km2": 1.0,
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": poly,
+                },
+            })
+            idx += 1
+            y += step_lat
+        x += step_lon
+
+    _cached_fallback_grid = {
+        "type": "FeatureCollection",
+        "total": len(features),
+        "returned": len(features),
+        "tile_size_m": tile_size_m,
+        "features": features,
+    }
+    return _cached_fallback_grid
+
+
 @router.get("/tiles")
 async def list_processing_tiles(
     db: Annotated[AsyncSession | None, Depends(get_db)],
@@ -93,7 +161,15 @@ async def list_processing_tiles(
 ) -> dict:
     """List persisted processing tiles as a GeoJSON FeatureCollection."""
     if db is None:
-        return {"type": "FeatureCollection", "total": 0, "returned": 0, "features": []}
+        full = _get_fast_belagavi_grid(tile_size_m or 1000)
+        sliced = full["features"][offset : offset + limit]
+        return {
+            "type": "FeatureCollection",
+            "total": full["total"],
+            "returned": len(sliced),
+            "tile_size_m": tile_size_m or 1000,
+            "features": sliced,
+        }
     filters = []
     if tile_size_m is not None:
         filters.append(ProcessingTile.tile_size_m == tile_size_m)

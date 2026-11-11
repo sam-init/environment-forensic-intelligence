@@ -9,6 +9,7 @@ import { EventDetailPanel } from '../components/EventDetailPanel';
 import { EmptyState } from '../components/EmptyState';
 import { EarthEnginePanel, type EELayer, type CompareState } from '../components/EarthEnginePanel';
 import { GridPanel } from '../components/GridPanel';
+import { getCachedTileUrl } from '../utils/tileCache';
 
 /** Today's date as ISO string (YYYY-MM-DD) */
 function todayIso(): string {
@@ -34,7 +35,10 @@ export function DashboardPage() {
 
   const [selectedEvent, setSelectedEvent] = useState<ForensicEvent | null>(null);
   const [activeLayer, setActiveLayer] = useState<EELayer>('true_color');
-  const [eeTileUrl, setEeTileUrl] = useState<string | null>(null);
+  // Fast start: initialize from cached GEE tile URLs to eliminate initial load latency
+  const [eeTileUrl, setEeTileUrl] = useState<string | null>(() => getCachedTileUrl('true_color'));
+  const [showLabels, setShowLabels] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
   const [compareState, setCompareState] = useState<CompareState>(INITIAL_COMPARE_STATE);
   const [mapView, setMapView] = useState(DEFAULT_MAP_VIEW);
   const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
@@ -177,6 +181,10 @@ export function DashboardPage() {
               siteGeometry={selectedGeometry}
               onCompareChange={setCompareState}
               viewCenter={mapView.center}
+              showLabels={showLabels}
+              onToggleLabels={setShowLabels}
+              showGrid={showGrid}
+              onToggleGrid={setShowGrid}
             />
           </div>
         )}
@@ -262,6 +270,10 @@ export function DashboardPage() {
           onTileSelect={setSelectedTileId}
           focus={gridFocus}
           onViewCenterChange={handleMapViewChange}
+          showLabels={showLabels}
+          onToggleLabels={setShowLabels}
+          showGrid={showGrid}
+          onToggleGrid={setShowGrid}
         />
 
         {/* Attribution */}

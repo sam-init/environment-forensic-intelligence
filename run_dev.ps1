@@ -9,7 +9,7 @@ Write-Host "===================================================" -ForegroundColo
 $root = $PSScriptRoot
 
 Write-Host "`n[1/2] Starting Backend (FastAPI + Google Earth Engine)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\backend'; .venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root\backend'; .\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 Start-Sleep -Seconds 2
 

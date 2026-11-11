@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -33,6 +34,13 @@ S2_COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
 # Default focus area — Belagavi district, Karnataka
 # Used only for scene FILTERING, never for clipping tiles
 _DEFAULT_FILTER_COORDS = [73.9, 15.2, 75.6, 16.7]  # ~170km × 170km
+
+# Caching for high performance & low latency
+_cached_overview: dict[str, Any] | None = None
+_cached_overview_time: float = 0.0
+OVERVIEW_CACHE_TTL = 7200.0  # 2 hours
+_cached_belagavi_boundary: dict[str, Any] | None = None
+_compare_cache: dict[str, Any] = {}
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Initialisation
@@ -102,9 +110,22 @@ def _add_indices(image: ee.Image) -> ee.Image:
     return image.addBands([ndvi, ndwi, bsi])
 
 
+def _enhance_composite(image: ee.Image) -> ee.Image:
+    """
+    Super-resolution edge enhancement for Sentinel-2 optical imagery.
+    Applies bicubic sub-pixel resampling and an unsharp-mask high-pass boost
+    to eliminate blur and make field borders, roads, and excavation edges razor-sharp.
+    """
+    rgb = image.select(["B4", "B3", "B2"]).resample("bicubic")
+    smooth = rgb.convolve(ee.Kernel.gaussian(radius=1.5, sigma=1.0))
+    sharpened_rgb = rgb.add(rgb.subtract(smooth).multiply(1.35))
+    indices = image.select(["NDVI", "NDWI", "BSI"]).resample("bicubic")
+    return sharpened_rgb.addBands(indices)
+
+
 def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) -> ee.Image:
     """
-    Build a cloud-free Sentinel-2 median composite.
+    Build a cloud-free Sentinel-2 median composite with edge sharpening.
 
     IMPORTANT: The composite is filtered by geometry (so only scenes covering
     the AOI are included), but is NOT clipped — the returned image has global
@@ -115,12 +136,12 @@ def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) 
         ee.ImageCollection(S2_COLLECTION)
         .filterBounds(filter_geometry)        # filter SCENES only, don't clip
         .filterDate(start, end)
-        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 25))
+        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
         .map(_mask_s2_clouds)
         .map(_add_indices)
     )
-    # mosaic() preserves global coverage; median() also works but is slower
-    return collection.median()
+    raw = collection.median()
+    return _enhance_composite(raw)
 
 
 def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
@@ -134,6 +155,10 @@ def get_belagavi_boundary() -> dict[str, Any]:
     GAUL 2015 predates the Belgaum -> Belagavi rename, so both spellings are
     accepted. The district outline is the only area the 1 km grid is built on.
     """
+    global _cached_belagavi_boundary
+    if _cached_belagavi_boundary is not None:
+        return _cached_belagavi_boundary
+
     collection = ee.FeatureCollection("FAO/GAUL/2015/level2")
     districts = collection.filter(ee.Filter.eq("ADM0_NAME", "India")).filter(
         ee.Filter.eq("ADM1_NAME", "Karnataka")
@@ -143,6 +168,7 @@ def get_belagavi_boundary() -> dict[str, Any]:
     geometry = districts.geometry().getInfo()
     if not geometry:
         raise RuntimeError("Belagavi district boundary is empty in the Earth Engine GAUL collection.")
+    _cached_belagavi_boundary = geometry
     return geometry
 
 
@@ -210,9 +236,9 @@ def detect_single_tile_change(
 VIS_PARAMS: dict[str, dict] = {
     "true_color": {
         "bands": ["B4", "B3", "B2"],  # Red, Green, Blue
-        "min": 0.0,
-        "max": 0.3,
-        "gamma": 1.6,
+        "min": 0.02,
+        "max": 0.18,
+        "gamma": 1.22,
     },
     "false_color": {
         "bands": ["B8", "B4", "B3"],  # NIR, Red, Green
@@ -350,7 +376,7 @@ async def get_date_scene_tile(
             },
         ).rename("BSI")
 
-        all_bands = scaled.addBands([ndvi, ndwi, bsi])
+        all_bands = _enhance_composite(scaled.addBands([ndvi, ndwi, bsi]))
         # NO .clip() — let GEE serve global tiles at native resolution
 
         params = VIS_PARAMS.get(vis_type, VIS_PARAMS["true_color"])
@@ -383,7 +409,12 @@ async def get_before_after_comparison(
     Generate paired before & after Sentinel-2 tile URLs for side-by-side comparison.
     Tiles are NOT clipped — full native resolution at any zoom.
     Change metrics are computed separately via reduceRegion (geometry used only there).
+    Cached in memory for rapid tab switching.
     """
+    cache_key = f"{before_date}_{after_date}_{vis_type}_{window_days}_{center_lon}_{center_lat}_{bool(geometry)}"
+    if cache_key in _compare_cache:
+        return _compare_cache[cache_key]
+
     def _fetch():
         if geometry:
             filter_geom = _geometry_from_geojson(geometry)
@@ -498,7 +529,9 @@ async def get_before_after_comparison(
             "source": "Google Earth Engine / Sentinel-2 SR Harmonized (10m)",
         }
 
-    return await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    res = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    _compare_cache[cache_key] = res
+    return res
 
 
 async def get_site_stats(
@@ -554,9 +587,13 @@ async def get_belagavi_overview() -> dict[str, Any]:
     """
     Return tile URLs for all key visualisations over Belagavi district,
     plus a recent scene count.
-
-    Tiles are NOT clipped — sharp at any zoom level, exactly like GEE Code Editor.
+    Cached for high performance & minimal latency.
     """
+    global _cached_overview, _cached_overview_time
+    now = time.time()
+    if _cached_overview is not None and (now - _cached_overview_time) < OVERVIEW_CACHE_TTL:
+        return _cached_overview
+
     def _fetch():
         # Filter area: Belagavi district (AOI for best scene selection)
         filter_geom = ee.Geometry.Rectangle(_DEFAULT_FILTER_COORDS)
@@ -590,4 +627,7 @@ async def get_belagavi_overview() -> dict[str, Any]:
             "ee_project": EE_PROJECT,
         }
 
-    return await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    data = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+    _cached_overview = data
+    _cached_overview_time = now
+    return data

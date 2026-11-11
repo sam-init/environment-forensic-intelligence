@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Search, X } from 'lucide-react';
+import { Search, X, MapPin, Tag, Grid3x3 } from 'lucide-react';
 import type { ForensicEvent, GridTileCollection } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
+import { useLocationInfo } from '../hooks/useLocationInfo';
+import { getBelagavi1KmGrid } from '../utils/gridGenerator';
 
 interface EFIMapProps {
   events?: ForensicEvent[];
@@ -27,6 +29,10 @@ interface EFIMapProps {
   onTileSelect?: (tileId: string) => void;
   focus?: { center: [number, number]; zoom: number; nonce: number } | null;
   onViewCenterChange?: (center: [number, number], zoom: number) => void;
+  showLabels?: boolean;
+  onToggleLabels?: (show: boolean) => void;
+  showGrid?: boolean;
+  onToggleGrid?: (show: boolean) => void;
 }
 
 type PhotonProperties = {
@@ -59,7 +65,11 @@ const gridHandlersByMap = new WeakMap<maplibregl.Map, GridEventHandlers>();
 
 const OSM_SOURCE = {
   type: 'raster' as const,
-  tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+  tiles: [
+    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  ],
   tileSize: 256 as const,
   attribution: '© OpenStreetMap contributors',
   maxzoom: 19,
@@ -72,6 +82,16 @@ const HIGH_RES_IMAGERY_SOURCE = {
   tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
   tileSize: 256 as const,
   attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  maxzoom: 18,
+};
+
+// Official Esri reference overlay: State boundaries, District boundaries,
+// and Area / City / Town / Village names tailored for satellite imagery.
+const HIGH_RES_LABELS_SOURCE = {
+  type: 'raster' as const,
+  tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+  tileSize: 256 as const,
+  attribution: '© Esri — Boundaries & Places Reference',
   maxzoom: 18,
 };
 
@@ -95,7 +115,27 @@ export function EFIMap({
   onTileSelect,
   focus = null,
   onViewCenterChange,
+  showLabels,
+  onToggleLabels,
+  showGrid,
+  onToggleGrid,
 }: EFIMapProps) {
+  const [internalShowLabels, setInternalShowLabels] = useState(true);
+  const effectiveShowLabels = showLabels !== undefined ? showLabels : internalShowLabels;
+  const handleToggleLabels = (next: boolean) => {
+    setInternalShowLabels(next);
+    onToggleLabels?.(next);
+  };
+
+  const [internalShowGrid, setInternalShowGrid] = useState(true);
+  const effectiveShowGrid = showGrid !== undefined ? showGrid : internalShowGrid;
+  const handleToggleGrid = (next: boolean) => {
+    setInternalShowGrid(next);
+    onToggleGrid?.(next);
+  };
+
+  const [currentCenter, setCurrentCenter] = useState<[number, number]>(center);
+  const locationInfo = useLocationInfo(currentCenter);
   // Single map refs
   const singleMapContainer = useRef<HTMLDivElement>(null);
   const singleMapRef = useRef<maplibregl.Map | null>(null);
@@ -164,6 +204,7 @@ export function EFIMap({
   const handleSearchSelect = (feature: PhotonFeature) => {
     const [lon, lat] = feature.geometry.coordinates;
     const target: [number, number] = [lon, lat];
+    setCurrentCenter(target);
     const targetZoom = searchZoom(feature.properties);
     const map = compareMode
       ? beforeMapRef.current ?? afterMapRef.current
@@ -184,6 +225,8 @@ export function EFIMap({
 
     const map = new maplibregl.Map({
       container: singleMapContainer.current,
+      fadeDuration: 0,
+      maxTileCacheSize: 150,
       style: {
         version: 8,
         sources: { osm: OSM_SOURCE },
@@ -213,7 +256,9 @@ export function EFIMap({
       viewChangeRef.current?.(map.getCenter().toArray() as [number, number], map.getZoom());
     });
     map.on('moveend', () => {
-      viewChangeRef.current?.(map.getCenter().toArray() as [number, number], map.getZoom());
+      const c = map.getCenter().toArray() as [number, number];
+      setCurrentCenter(c);
+      viewChangeRef.current?.(c, map.getZoom());
     });
     singleMapRef.current = map;
 
@@ -232,20 +277,36 @@ export function EFIMap({
 
     const EE_SOURCE_ID = 'ee-satellite';
     const EE_LAYER_ID = 'ee-satellite-tiles';
+    const EE_LABELS_SOURCE_ID = 'ee-satellite-labels';
+    const EE_LABELS_LAYER_ID = 'ee-satellite-labels-tiles';
 
+    if (map.getLayer(EE_LABELS_LAYER_ID)) map.removeLayer(EE_LABELS_LAYER_ID);
+    if (map.getSource(EE_LABELS_SOURCE_ID)) map.removeSource(EE_LABELS_SOURCE_ID);
     if (map.getLayer(EE_LAYER_ID)) map.removeLayer(EE_LAYER_ID);
     if (map.getSource(EE_SOURCE_ID)) map.removeSource(EE_SOURCE_ID);
 
     if (activeLayer === 'high_res_imagery') {
       if (map.getLayer('osm-tiles')) map.setPaintProperty('osm-tiles', 'raster-opacity', 0);
       map.addSource(EE_SOURCE_ID, HIGH_RES_IMAGERY_SOURCE);
-      const firstEventLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+      const firstOverLayer = map.getLayer('efi-grid-fill')
+        ? 'efi-grid-fill'
+        : (map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined);
       map.addLayer({
         id: EE_LAYER_ID,
         type: 'raster',
         source: EE_SOURCE_ID,
         paint: { 'raster-opacity': 1, 'raster-resampling': 'linear' },
-      }, firstEventLayer);
+      }, firstOverLayer);
+
+      if (effectiveShowLabels) {
+        map.addSource(EE_LABELS_SOURCE_ID, HIGH_RES_LABELS_SOURCE);
+        map.addLayer({
+          id: EE_LABELS_LAYER_ID,
+          type: 'raster',
+          source: EE_LABELS_SOURCE_ID,
+          paint: { 'raster-opacity': 1.0 },
+        }, firstOverLayer);
+      }
       return;
     }
 
@@ -271,7 +332,11 @@ export function EFIMap({
       attribution: '© Google Earth Engine · Sentinel-2 (10m)',
     });
 
-    const firstEventLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+    const firstOverLayer = map.getLayer('efi-belagavi-boundary-glow')
+      ? 'efi-belagavi-boundary-glow'
+      : (map.getLayer('efi-grid-fill')
+        ? 'efi-grid-fill'
+        : (map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined));
     map.addLayer(
       {
         id: EE_LAYER_ID,
@@ -280,11 +345,23 @@ export function EFIMap({
         paint: {
           'raster-opacity': 0.95,
           'raster-resampling': 'linear',
+          'raster-contrast': 0.22,
+          'raster-saturation': 0.18,
         },
       },
-      firstEventLayer,
+      firstOverLayer,
     );
-  }, [compareMode, activeLayer, eeTileUrl, singleMapReady]);
+
+    if (effectiveShowLabels) {
+      map.addSource(EE_LABELS_SOURCE_ID, HIGH_RES_LABELS_SOURCE);
+      map.addLayer({
+        id: EE_LABELS_LAYER_ID,
+        type: 'raster',
+        source: EE_LABELS_SOURCE_ID,
+        paint: { 'raster-opacity': 1.0 },
+      }, firstOverLayer);
+    }
+  }, [compareMode, activeLayer, eeTileUrl, singleMapReady, effectiveShowLabels]);
 
   // Update Single Map event overlays
   useEffect(() => {
@@ -316,14 +393,14 @@ export function EFIMap({
     map.flyTo({ center: focus.center, zoom: focus.zoom, duration: 1400 });
   }, [compareMode, focus, singleMapReady]);
 
-  // Single Map 1 km processing grid overlay
+  // Single Map 1 km processing grid overlay — renders on EVERY layer
   useEffect(() => {
     if (compareMode) return;
     const map = singleMapRef.current;
     if (!map || !singleMapReady) return;
 
-    renderGridLayers(map, gridTiles, selectedTileId, onTileSelect);
-  }, [compareMode, gridTiles, selectedTileId, singleMapReady, onTileSelect]);
+    renderGridLayers(map, gridTiles, selectedTileId, effectiveShowGrid, onTileSelect);
+  }, [compareMode, gridTiles, selectedTileId, singleMapReady, effectiveShowGrid, activeLayer, eeTileUrl, onTileSelect]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   //  2. Initialize Compare Dual Maps (when in compareMode)
@@ -351,6 +428,8 @@ export function EFIMap({
 
     const map1 = new maplibregl.Map({
       container: beforeContainer.current,
+      fadeDuration: 0,
+      maxTileCacheSize: 150,
       style: {
         version: 8,
         sources: { osm: OSM_SOURCE },
@@ -369,6 +448,8 @@ export function EFIMap({
 
     const map2 = new maplibregl.Map({
       container: afterContainer.current,
+      fadeDuration: 0,
+      maxTileCacheSize: 150,
       style: {
         version: 8,
         sources: { osm: OSM_SOURCE },
@@ -408,7 +489,9 @@ export function EFIMap({
     syncMaps(map2, map1);
 
     map1.on('moveend', () => {
-      viewChangeRef.current?.(map1.getCenter().toArray() as [number, number], map1.getZoom());
+      const c = map1.getCenter().toArray() as [number, number];
+      setCurrentCenter(c);
+      viewChangeRef.current?.(c, map1.getZoom());
     });
 
     let loadedCount = 0;
@@ -416,7 +499,9 @@ export function EFIMap({
       loadedCount++;
       if (loadedCount >= 2) {
         setCompareMapsReady(true);
-        viewChangeRef.current?.(map1.getCenter().toArray() as [number, number], map1.getZoom());
+        const c = map1.getCenter().toArray() as [number, number];
+        setCurrentCenter(c);
+        viewChangeRef.current?.(c, map1.getZoom());
       }
     };
 
@@ -443,6 +528,8 @@ export function EFIMap({
     const map2 = afterMapRef.current;
 
     if (map1) {
+      if (map1.getLayer('before-labels-tiles')) map1.removeLayer('before-labels-tiles');
+      if (map1.getSource('before-labels-src')) map1.removeSource('before-labels-src');
       if (map1.getLayer('before-ee-tiles')) map1.removeLayer('before-ee-tiles');
       if (map1.getSource('before-ee-src')) map1.removeSource('before-ee-src');
 
@@ -454,6 +541,9 @@ export function EFIMap({
           maxzoom: 18,
           attribution: beforeAttribution,
         });
+        const firstOver1 = map1.getLayer('efi-belagavi-boundary-glow')
+          ? 'efi-belagavi-boundary-glow'
+          : (map1.getLayer('efi-grid-fill') ? 'efi-grid-fill' : undefined);
         map1.addLayer({
           id: 'before-ee-tiles',
           type: 'raster',
@@ -461,12 +551,26 @@ export function EFIMap({
           paint: {
             'raster-opacity': 0.95,
             'raster-resampling': 'linear',
+            'raster-contrast': 0.22,
+            'raster-saturation': 0.18,
           },
-        });
+        }, firstOver1);
+
+        if (effectiveShowLabels) {
+          map1.addSource('before-labels-src', HIGH_RES_LABELS_SOURCE);
+          map1.addLayer({
+            id: 'before-labels-tiles',
+            type: 'raster',
+            source: 'before-labels-src',
+            paint: { 'raster-opacity': 1.0 },
+          }, firstOver1);
+        }
       }
     }
 
     if (map2) {
+      if (map2.getLayer('after-labels-tiles')) map2.removeLayer('after-labels-tiles');
+      if (map2.getSource('after-labels-src')) map2.removeSource('after-labels-src');
       if (map2.getLayer('after-ee-tiles')) map2.removeLayer('after-ee-tiles');
       if (map2.getSource('after-ee-src')) map2.removeSource('after-ee-src');
 
@@ -478,6 +582,9 @@ export function EFIMap({
           maxzoom: 18,
           attribution: afterAttribution,
         });
+        const firstOver2 = map2.getLayer('efi-belagavi-boundary-glow')
+          ? 'efi-belagavi-boundary-glow'
+          : (map2.getLayer('efi-grid-fill') ? 'efi-grid-fill' : undefined);
         map2.addLayer({
           id: 'after-ee-tiles',
           type: 'raster',
@@ -485,11 +592,32 @@ export function EFIMap({
           paint: {
             'raster-opacity': 0.95,
             'raster-resampling': 'linear',
+            'raster-contrast': 0.22,
+            'raster-saturation': 0.18,
           },
-        });
+        }, firstOver2);
+
+        if (effectiveShowLabels) {
+          map2.addSource('after-labels-src', HIGH_RES_LABELS_SOURCE);
+          map2.addLayer({
+            id: 'after-labels-tiles',
+            type: 'raster',
+            source: 'after-labels-src',
+            paint: { 'raster-opacity': 1.0 },
+          }, firstOver2);
+        }
       }
     }
-  }, [compareMode, compareMapsReady, beforeTileUrl, afterTileUrl, beforeAttribution, afterAttribution]);
+  }, [compareMode, compareMapsReady, beforeTileUrl, afterTileUrl, beforeAttribution, afterAttribution, effectiveShowLabels]);
+
+  // Compare Maps 1 km processing grid overlay — renders on both before and after panes
+  useEffect(() => {
+    if (!compareMode || !compareMapsReady) return;
+    const map1 = beforeMapRef.current;
+    const map2 = afterMapRef.current;
+    if (map1) renderGridLayers(map1, gridTiles, selectedTileId, effectiveShowGrid, onTileSelect);
+    if (map2) renderGridLayers(map2, gridTiles, selectedTileId, effectiveShowGrid, onTileSelect);
+  }, [compareMode, compareMapsReady, gridTiles, selectedTileId, effectiveShowGrid, beforeTileUrl, afterTileUrl, onTileSelect]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
@@ -516,6 +644,63 @@ export function EFIMap({
           </div>
         </div>
       )}
+
+      {/* Geographical Location & Administrative Context Badge */}
+      <div className="map-admin-badge" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="map-admin-badge-icon" aria-hidden="true">
+          <MapPin size={13} style={{ color: '#a855f7' }} />
+        </div>
+        <div className="map-admin-badge-content">
+          <div className="map-admin-badge-main">
+            <span className="map-admin-area" title="Area / Locality">{locationInfo.area}</span>
+            <span className="map-admin-sep">·</span>
+            <span className="map-admin-district" title="District">{locationInfo.district}</span>
+          </div>
+          <div className="map-admin-badge-sub">
+            <span className="map-admin-state">{locationInfo.state}, {locationInfo.country}</span>
+            {currentCenter && (
+              <span className="map-admin-coords">
+                ({currentCenter[1].toFixed(3)}°N, {currentCenter[0].toFixed(3)}°E)
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="map-district-badge-btn"
+          onClick={() => {
+            const map = compareMode ? beforeMapRef.current : singleMapRef.current;
+            if (map) {
+              map.flyTo({ center: [74.50, 15.85], zoom: 9.3, duration: 1000 });
+            }
+          }}
+          title="Belagavi District (13,415 km² · 13,950 1km grid cells) — click to focus"
+          aria-label="Belagavi District Selected"
+        >
+          <span className="map-district-badge-dot" />
+          <span>District: <strong>Belagavi</strong></span>
+        </button>
+        <button
+          type="button"
+          className={`map-labels-toggle-btn ${effectiveShowLabels ? 'active' : ''}`}
+          onClick={() => handleToggleLabels(!effectiveShowLabels)}
+          title={effectiveShowLabels ? 'Area & District labels visible on map — click to hide' : 'Area & District labels hidden — click to show'}
+          aria-label="Toggle map area and district labels"
+        >
+          <Tag size={11} />
+          <span>{effectiveShowLabels ? 'Labels ON' : 'Labels OFF'}</span>
+        </button>
+        <button
+          type="button"
+          className={`map-labels-toggle-btn ${effectiveShowGrid ? 'active-grid' : ''}`}
+          onClick={() => handleToggleGrid(!effectiveShowGrid)}
+          title={effectiveShowGrid ? '1 km Belagavi grid visible on map — click to hide' : '1 km Belagavi grid hidden — click to show'}
+          aria-label="Toggle 1x1 km Belagavi grid overlay"
+        >
+          <Grid3x3 size={11} />
+          <span>{effectiveShowGrid ? '1km Grid: ON' : '1km Grid: OFF'}</span>
+        </button>
+      </div>
 
       {/* Place / district / state search */}
       <div className="map-search" onMouseDown={(e) => e.stopPropagation()}>
@@ -626,11 +811,15 @@ function renderGridLayers(
   map: maplibregl.Map,
   tiles: GridTileCollection | null,
   selectedTileId: string | null,
+  showGrid: boolean = true,
   onTileSelect?: (tileId: string) => void,
 ) {
   const sourceId = 'efi-grid';
   const fillLayer = 'efi-grid-fill';
   const lineLayer = 'efi-grid-line';
+  const boundarySourceId = 'efi-belagavi-boundary';
+  const boundaryLineLayer = 'efi-belagavi-boundary-line';
+  const boundaryGlowLayer = 'efi-belagavi-boundary-glow';
 
   const previousHandlers = gridHandlersByMap.get(map);
   if (previousHandlers) {
@@ -642,14 +831,58 @@ function renderGridLayers(
   if (map.getLayer(lineLayer)) map.removeLayer(lineLayer);
   if (map.getSource(sourceId)) map.removeSource(sourceId);
 
-  if (!tiles || tiles.features.length === 0) return;
+  const beforeLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
+
+  // Always render the official Belagavi District Boundary line
+  if (!map.getSource(boundarySourceId)) {
+    map.addSource(boundarySourceId, {
+      type: 'geojson',
+      data: '/data/belagavi_boundary.json',
+    });
+  }
+  if (!map.getLayer(boundaryGlowLayer)) {
+    map.addLayer(
+      {
+        id: boundaryGlowLayer,
+        type: 'line',
+        source: boundarySourceId,
+        paint: {
+          'line-color': '#06b6d4',
+          'line-width': 4.5,
+          'line-opacity': 0.45,
+        },
+      },
+      beforeLayer,
+    );
+  }
+  if (!map.getLayer(boundaryLineLayer)) {
+    map.addLayer(
+      {
+        id: boundaryLineLayer,
+        type: 'line',
+        source: boundarySourceId,
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 2.2,
+          'line-dasharray': [3, 2],
+          'line-opacity': 0.95,
+        },
+      },
+      beforeLayer,
+    );
+  }
+
+  if (!showGrid) return;
+
+  const gridData = (tiles && tiles.features && tiles.features.length > 0)
+    ? (tiles as unknown as GeoJSON.FeatureCollection)
+    : '/data/belagavi_1km_grid.json';
 
   map.addSource(sourceId, {
     type: 'geojson',
-    data: tiles as unknown as GeoJSON.FeatureCollection,
+    data: gridData,
   });
 
-  const beforeLayer = map.getLayer('efi-events-fill') ? 'efi-events-fill' : undefined;
   const selectedId = selectedTileId ?? '';
 
   map.addLayer(
@@ -658,8 +891,8 @@ function renderGridLayers(
       type: 'fill',
       source: sourceId,
       paint: {
-        'fill-color': '#22d3ee',
-        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.18, 0.02],
+        'fill-color': '#06b6d4',
+        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.25, 0.04],
       },
     },
     beforeLayer,
@@ -671,9 +904,9 @@ function renderGridLayers(
       type: 'line',
       source: sourceId,
       paint: {
-        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(34,211,238,0.55)'],
-        'line-width': ['case', ['==', ['get', 'tile_id'], selectedId], 2.4, 0.6],
-        'line-opacity': 0.9,
+        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(6,182,212,0.85)'],
+        'line-width': ['case', ['==', ['get', 'tile_id'], selectedId], 2.5, 0.85],
+        'line-opacity': 0.95,
       },
     },
     beforeLayer,

@@ -14,9 +14,14 @@ import {
   ArrowRightLeft,
   Calendar,
   AlertTriangle,
+  MapPin,
+  Tag,
+  Grid3x3,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import type { EEOverview, EECompareResult, WaybackComparison } from '../types/api';
+import { useLocationInfo } from '../hooks/useLocationInfo';
+import { setCachedTiles } from '../utils/tileCache';
 
 export type EELayer = 'osm' | 'high_res_imagery' | 'true_color' | 'ndvi' | 'ndwi' | 'bsi';
 
@@ -41,6 +46,10 @@ interface EarthEnginePanelProps {
   siteGeometry?: { type: string; coordinates: unknown[] } | null;
   onCompareChange?: (compareState: CompareState) => void;
   viewCenter?: [number, number] | null;
+  showLabels?: boolean;
+  onToggleLabels?: (show: boolean) => void;
+  showGrid?: boolean;
+  onToggleGrid?: (show: boolean) => void;
 }
 
 const LAYER_META: Record<EELayer, { label: string; icon: React.ReactNode; desc: string; color: string }> = {
@@ -114,7 +123,12 @@ export function EarthEnginePanel({
   siteGeometry,
   onCompareChange,
   viewCenter = null,
+  showLabels = true,
+  onToggleLabels,
+  showGrid = true,
+  onToggleGrid,
 }: EarthEnginePanelProps) {
+  const locationInfo = useLocationInfo(viewCenter);
   const [panelTab, setPanelTab] = useState<'live' | 'compare'>('live');
   const [daysBack] = useState(60);
 
@@ -149,6 +163,12 @@ export function EarthEnginePanel({
     staleTime: 5 * 60_000,
     retry: 1,
   });
+
+  useEffect(() => {
+    if (overview?.tiles) {
+      setCachedTiles(overview.tiles as Record<string, string>);
+    }
+  }, [overview]);
 
   // Fetch site stats if geometry provided
   const { data: siteStats, isLoading: statsLoading } = useQuery({
@@ -350,6 +370,71 @@ export function EarthEnginePanel({
             })}
           </div>
 
+          {/* 1 KM DISTRICT REVIEW GRID TOGGLE */}
+          <label className="ee-grid-toggle">
+            <input
+              type="checkbox"
+              checked={showGrid}
+              onChange={(e) => onToggleGrid?.(e.target.checked)}
+            />
+            <span>
+              <strong>1 km Review Grid Overlay</strong>
+              <small>Display 1 km × 1 km Belagavi grid over any active layer</small>
+            </span>
+          </label>
+
+          {/* HIGH-RESOLUTION IMAGERY & AREA CONTEXT CARD */}
+          {activeLayer === 'high_res_imagery' && (
+            <div className="ee-highres-card">
+              <div className="ee-highres-header">
+                <MapPin size={12} style={{ color: '#a855f7' }} />
+                <span>AREA & ADMINISTRATIVE DETAILS</span>
+              </div>
+              <div className="ee-admin-rows">
+                <div className="ee-admin-row">
+                  <span className="ee-admin-label">Area / Locality</span>
+                  <strong className="ee-admin-val">{locationInfo.area}</strong>
+                </div>
+                <div className="ee-admin-row">
+                  <span className="ee-admin-label">District</span>
+                  <strong className="ee-admin-val">{locationInfo.district}</strong>
+                </div>
+                <div className="ee-admin-row">
+                  <span className="ee-admin-label">State</span>
+                  <strong className="ee-admin-val">{locationInfo.state}</strong>
+                </div>
+                <div className="ee-admin-row">
+                  <span className="ee-admin-label">Country</span>
+                  <span className="ee-admin-val">{locationInfo.country}</span>
+                </div>
+                {viewCenter && (
+                  <div className="ee-admin-row">
+                    <span className="ee-admin-label">Coordinates</span>
+                    <span className="ee-admin-val-mono">
+                      {viewCenter[1].toFixed(4)}°N, {viewCenter[0].toFixed(4)}°E
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <label className="ee-highres-toggle" style={{ marginTop: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => onToggleLabels?.(e.target.checked)}
+                />
+                <span>
+                  Show Area & District Labels
+                  <small>Esri World Boundaries & Places reference overlay</small>
+                </span>
+              </label>
+
+              <div className="ee-highres-note">
+                Detailed aerial & satellite basemap showing sub-meter terrain, rivers, quarries, and settlement boundaries.
+              </div>
+            </div>
+          )}
+
           {siteGeometry && (
             <div className="ee-stats">
               <div className="ee-layer-label" style={{ marginTop: 8 }}>SPECTRAL INDICES</div>
@@ -522,6 +607,24 @@ export function EarthEnginePanel({
               <small>Esri Wayback — sharp, but release date is approximate</small>
             </span>
           </label>
+
+          {highResImagery && (
+            <div className="ee-compare-admin-box">
+              <div className="ee-compare-admin-title">
+                <MapPin size={11} style={{ color: '#a855f7' }} />
+                <span>{locationInfo.area} · {locationInfo.district} · {locationInfo.state}</span>
+              </div>
+              <label className="ee-labels-mini-toggle">
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => onToggleLabels?.(e.target.checked)}
+                />
+                <span>Show area & district names on compare maps</span>
+              </label>
+            </div>
+          )}
+
           {highResImagery && waybackLoading && (
             <div style={{ fontSize: 9, color: 'var(--color-text-muted)', marginTop: 4 }}>
               Loading high-res Wayback imagery…

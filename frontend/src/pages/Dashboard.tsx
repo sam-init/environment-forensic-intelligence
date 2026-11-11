@@ -38,7 +38,7 @@ export function DashboardPage() {
   // Fast start: initialize from cached GEE tile URLs to eliminate initial load latency
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(() => getCachedTileUrl('true_color'));
   const [showLabels, setShowLabels] = useState(true);
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   const [compareState, setCompareState] = useState<CompareState>(INITIAL_COMPARE_STATE);
   const [mapView, setMapView] = useState(DEFAULT_MAP_VIEW);
   const [gridTiles, setGridTiles] = useState<GridTileCollection | null>(null);
@@ -257,6 +257,7 @@ export function DashboardPage() {
           center={mapView.center}
           zoom={mapView.zoom}
           activeLayer={activeLayer}
+          onLayerChange={handleLayerChange}
           eeTileUrl={eeTileUrl}
           compareMode={compareState.active}
           beforeTileUrl={compareState.beforeTileUrl}

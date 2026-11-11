@@ -125,7 +125,7 @@ def _enhance_composite(image: ee.Image) -> ee.Image:
 
 def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) -> ee.Image:
     """
-    Build a cloud-free Sentinel-2 median composite with edge sharpening.
+    Build a cloud-free Sentinel-2 median composite.
 
     IMPORTANT: The composite is filtered by geometry (so only scenes covering
     the AOI are included), but is NOT clipped — the returned image has global
@@ -140,8 +140,7 @@ def _get_composite_unclipped(filter_geometry: ee.Geometry, days_back: int = 60) 
         .map(_mask_s2_clouds)
         .map(_add_indices)
     )
-    raw = collection.median()
-    return _enhance_composite(raw)
+    return collection.median()
 
 
 def _geometry_from_geojson(geojson: dict) -> ee.Geometry:
@@ -237,8 +236,8 @@ VIS_PARAMS: dict[str, dict] = {
     "true_color": {
         "bands": ["B4", "B3", "B2"],  # Red, Green, Blue
         "min": 0.02,
-        "max": 0.18,
-        "gamma": 1.22,
+        "max": 0.22,
+        "gamma": 1.25,
     },
     "false_color": {
         "bands": ["B8", "B4", "B3"],  # NIR, Red, Green

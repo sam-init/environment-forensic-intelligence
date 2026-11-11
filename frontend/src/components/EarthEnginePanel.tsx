@@ -62,13 +62,13 @@ const LAYER_META: Record<EELayer, { label: string; icon: React.ReactNode; desc: 
   high_res_imagery: {
     label: 'High-Resolution Imagery',
     icon: <Satellite size={13} />,
-    desc: 'Detailed aerial/satellite basemap for visual inspection',
+    desc: 'Sub-meter (30cm) — sharp street & building level inspection',
     color: '#a855f7',
   },
   true_color: {
     label: 'True Colour',
     icon: <Satellite size={13} />,
-    desc: 'Sentinel-2 RGB (B4/B3/B2, 10m bicubic)',
+    desc: 'Sentinel-2 (10m) — live 5-day updates for recent environmental changes',
     color: '#3b82f6',
   },
   ndvi: {
@@ -167,8 +167,14 @@ export function EarthEnginePanel({
   useEffect(() => {
     if (overview?.tiles) {
       setCachedTiles(overview.tiles as Record<string, string>);
+      if (activeLayer !== 'osm' && activeLayer !== 'high_res_imagery') {
+        const freshUrl = (overview.tiles as Record<string, string>)[activeLayer];
+        if (freshUrl) {
+          onLayerChange(activeLayer, freshUrl);
+        }
+      }
     }
-  }, [overview]);
+  }, [overview, activeLayer, onLayerChange]);
 
   // Fetch site stats if geometry provided
   const { data: siteStats, isLoading: statsLoading } = useQuery({

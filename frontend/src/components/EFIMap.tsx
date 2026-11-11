@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Search, X, MapPin, Tag, Grid3x3 } from 'lucide-react';
+import { Search, X, MapPin, Tag, Grid3x3, Sparkles } from 'lucide-react';
 import type { ForensicEvent, GridTileCollection } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
@@ -14,6 +14,7 @@ interface EFIMapProps {
   center?: [number, number]; // [lng, lat]
   zoom?: number;
   activeLayer?: EELayer;
+  onLayerChange?: (layer: EELayer) => void;
   eeTileUrl?: string | null;
   // Temporal comparison props
   compareMode?: boolean;
@@ -119,6 +120,7 @@ export function EFIMap({
   onToggleLabels,
   showGrid,
   onToggleGrid,
+  onLayerChange,
 }: EFIMapProps) {
   const [internalShowLabels, setInternalShowLabels] = useState(true);
   const effectiveShowLabels = showLabels !== undefined ? showLabels : internalShowLabels;
@@ -127,7 +129,7 @@ export function EFIMap({
     onToggleLabels?.(next);
   };
 
-  const [internalShowGrid, setInternalShowGrid] = useState(true);
+  const [internalShowGrid, setInternalShowGrid] = useState(false);
   const effectiveShowGrid = showGrid !== undefined ? showGrid : internalShowGrid;
   const handleToggleGrid = (next: boolean) => {
     setInternalShowGrid(next);
@@ -135,6 +137,7 @@ export function EFIMap({
   };
 
   const [currentCenter, setCurrentCenter] = useState<[number, number]>(center);
+  const [currentZoom, setCurrentZoom] = useState(zoom);
   const locationInfo = useLocationInfo(currentCenter);
   // Single map refs
   const singleMapContainer = useRef<HTMLDivElement>(null);
@@ -258,6 +261,7 @@ export function EFIMap({
     map.on('moveend', () => {
       const c = map.getCenter().toArray() as [number, number];
       setCurrentCenter(c);
+      setCurrentZoom(map.getZoom());
       viewChangeRef.current?.(c, map.getZoom());
     });
     singleMapRef.current = map;
@@ -322,13 +326,13 @@ export function EFIMap({
     }
 
     // GEE tile source — 256px tiles, native 10m Sentinel-2 resolution
-    // No minzoom restriction — GEE serves sharp tiles at all zoom levels
+    // maxzoom: 14 matches physical sensor resolution; MapLibre applies smooth bilinear hardware filtering at zoom >= 15
     map.addSource(EE_SOURCE_ID, {
       type: 'raster',
       tiles: [eeTileUrl],
       tileSize: 256,
       minzoom: 0,
-      maxzoom: 18,
+      maxzoom: 14,
       attribution: '© Google Earth Engine · Sentinel-2 (10m)',
     });
 
@@ -343,10 +347,8 @@ export function EFIMap({
         type: 'raster',
         source: EE_SOURCE_ID,
         paint: {
-          'raster-opacity': 0.95,
+          'raster-opacity': 1.0,
           'raster-resampling': 'linear',
-          'raster-contrast': 0.22,
-          'raster-saturation': 0.18,
         },
       },
       firstOverLayer,
@@ -491,6 +493,7 @@ export function EFIMap({
     map1.on('moveend', () => {
       const c = map1.getCenter().toArray() as [number, number];
       setCurrentCenter(c);
+      setCurrentZoom(map1.getZoom());
       viewChangeRef.current?.(c, map1.getZoom());
     });
 
@@ -534,11 +537,12 @@ export function EFIMap({
       if (map1.getSource('before-ee-src')) map1.removeSource('before-ee-src');
 
       if (beforeTileUrl) {
+        const isWaybackBefore = Boolean(beforeTileUrl.includes('arcgisonline.com'));
         map1.addSource('before-ee-src', {
           type: 'raster',
           tiles: [beforeTileUrl],
           tileSize: 256,
-          maxzoom: 18,
+          maxzoom: isWaybackBefore ? 18 : 14,
           attribution: beforeAttribution,
         });
         const firstOver1 = map1.getLayer('efi-belagavi-boundary-glow')
@@ -549,10 +553,8 @@ export function EFIMap({
           type: 'raster',
           source: 'before-ee-src',
           paint: {
-            'raster-opacity': 0.95,
+            'raster-opacity': 1.0,
             'raster-resampling': 'linear',
-            'raster-contrast': 0.22,
-            'raster-saturation': 0.18,
           },
         }, firstOver1);
 
@@ -575,11 +577,12 @@ export function EFIMap({
       if (map2.getSource('after-ee-src')) map2.removeSource('after-ee-src');
 
       if (afterTileUrl) {
+        const isWaybackAfter = Boolean(afterTileUrl.includes('arcgisonline.com'));
         map2.addSource('after-ee-src', {
           type: 'raster',
           tiles: [afterTileUrl],
           tileSize: 256,
-          maxzoom: 18,
+          maxzoom: isWaybackAfter ? 18 : 14,
           attribution: afterAttribution,
         });
         const firstOver2 = map2.getLayer('efi-belagavi-boundary-glow')
@@ -590,10 +593,8 @@ export function EFIMap({
           type: 'raster',
           source: 'after-ee-src',
           paint: {
-            'raster-opacity': 0.95,
+            'raster-opacity': 1.0,
             'raster-resampling': 'linear',
-            'raster-contrast': 0.22,
-            'raster-saturation': 0.18,
           },
         }, firstOver2);
 
@@ -748,6 +749,31 @@ export function EFIMap({
             <Grid3x3 size={11} />
             <span>{effectiveShowGrid ? '1km Grid: ON' : '1km Grid: OFF'}</span>
           </button>
+
+          {activeLayer === 'true_color' && currentZoom >= 15 && onLayerChange && (
+            <button
+              type="button"
+              className="high-res-suggest-pill"
+              onClick={() => onLayerChange('high_res_imagery')}
+              title="Sentinel-2 10m physical limit reached. Click to switch to sub-meter (30cm) High-Resolution Imagery"
+              aria-label="Switch to High-Resolution Imagery"
+            >
+              <Sparkles size={11} />
+              <span>30cm High-Res</span>
+            </button>
+          )}
+          {activeLayer === 'high_res_imagery' && onLayerChange && (
+            <button
+              type="button"
+              className="high-res-suggest-pill active"
+              onClick={() => onLayerChange('true_color')}
+              title="Viewing sub-meter commercial imagery. Click to switch back to live 5-day Sentinel-2 True Colour"
+              aria-label="Switch to True Colour"
+            >
+              <Sparkles size={11} />
+              <span>30cm Active (Switch to Live)</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -895,7 +921,7 @@ function renderGridLayers(
       id: fillLayer,
       type: 'fill',
       source: sourceId,
-      minzoom: 10,
+      minzoom: 11.5,
       paint: {
         'fill-color': '#06b6d4',
         'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.25, 0.02],
@@ -909,20 +935,20 @@ function renderGridLayers(
       id: lineLayer,
       type: 'line',
       source: sourceId,
-      minzoom: 10,
+      minzoom: 11.5,
       paint: {
         'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(6,182,212,0.65)'],
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
-          10, 0.4,
-          12, 0.85,
-          14, 1.4,
+          11.5, 0.5,
+          13, 0.9,
+          15, 1.5,
         ],
         'line-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          9.9, 0,
-          10.4, 0.35,
-          12, 0.85,
+          11.4, 0,
+          11.8, 0.45,
+          13, 0.85,
         ],
       },
     },

@@ -83,7 +83,7 @@ DEMO_EVENTS = [
             "• SAR backscatter change corroborates optical disturbance\n"
             "• Location is 120 m from the mapped river channel\n"
             "• No matching mining lease polygon found in available datasets\n\n"
-            "⚠ This is synthetic DEMO DATA. It does not represent a real environmental incident."
+            "This is synthetic DEMO DATA. It does not represent a real environmental incident."
         ),
         "limitations": (
             "Regulatory boundary dataset is incomplete for this region. "
@@ -123,7 +123,7 @@ DEMO_EVENTS = [
             "• NDVI decreased from 0.35 to 0.04\n"
             "• Expansion pattern consistent with open-pit progression\n"
             "• Regulatory boundary data unavailable\n\n"
-            "⚠ This is synthetic DEMO DATA."
+            "This is synthetic DEMO DATA."
         ),
         "limitations": (
             "SAR data unavailable for this period due to synthetic data limitation. "
@@ -161,7 +161,7 @@ DEMO_EVENTS = [
             "• NDWI indicates water body reduction\n"
             "• Elevated bare-earth signal near settlement\n"
             "• Change detected in only 1 observation — not yet persistent\n\n"
-            "⚠ This is synthetic DEMO DATA."
+            "This is synthetic DEMO DATA."
         ),
         "limitations": (
             "Only 1 observation confirms change — persistence not established. "

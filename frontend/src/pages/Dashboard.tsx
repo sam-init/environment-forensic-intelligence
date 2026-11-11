@@ -37,7 +37,7 @@ export function DashboardPage() {
   const [activeLayer, setActiveLayer] = useState<EELayer>('true_color');
   // Fast start: initialize from cached GEE tile URLs to eliminate initial load latency
   const [eeTileUrl, setEeTileUrl] = useState<string | null>(() => getCachedTileUrl('true_color'));
-  const [showLabels, setShowLabels] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [compareState, setCompareState] = useState<CompareState>(INITIAL_COMPARE_STATE);
   const [mapView, setMapView] = useState(DEFAULT_MAP_VIEW);

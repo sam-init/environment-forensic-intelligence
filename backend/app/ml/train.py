@@ -272,7 +272,7 @@ def run_training(
                 "img_size": img_size,
             }, best_model_path)
 
-        flag = " ★ BEST" if is_best else ""
+        flag = " [BEST]" if is_best else ""
         if epoch % 5 == 0 or epoch == 1 or epoch == epochs or is_best:
             print(
                 f"Epoch {epoch:02d}/{epochs:02d} | "

@@ -1,11 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { Search, X, MapPin, Tag, Grid3x3, Sparkles } from 'lucide-react';
+import {
+  Search,
+  X,
+  MapPin,
+  Tag,
+  Grid3x3,
+  Sparkles,
+  Zap,
+  Crosshair,
+  BrainCircuit,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
 import type { ForensicEvent, GridTileCollection } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
 import { getRiskColor, scoreToRiskLevel } from '../utils/format';
 import { useLocationInfo } from '../hooks/useLocationInfo';
 import { getBelagavi1KmGrid } from '../utils/gridGenerator';
+import { api } from '../utils/api';
 
 interface EFIMapProps {
   events?: ForensicEvent[];
@@ -122,7 +136,7 @@ export function EFIMap({
   onToggleGrid,
   onLayerChange,
 }: EFIMapProps) {
-  const [internalShowLabels, setInternalShowLabels] = useState(true);
+  const [internalShowLabels, setInternalShowLabels] = useState(false);
   const effectiveShowLabels = showLabels !== undefined ? showLabels : internalShowLabels;
   const handleToggleLabels = (next: boolean) => {
     setInternalShowLabels(next);
@@ -163,6 +177,184 @@ export function EFIMap({
   const [searchResults, setSearchResults] = useState<PhotonFeature[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // AI Change Detection State (Siamese ResNet-18)
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiVerdict, setAiVerdict] = useState<{
+    is_changed: boolean;
+    label: string;
+    change_probability: number;
+    unchanged_probability: number;
+    confidence: number;
+    severity: string;
+    tile_id?: string;
+    raw_probability?: number;
+    edge_correlation?: number;
+    deep_similarity?: number;
+    analysis_note?: string;
+    beforeImg: string;
+    afterImg: string;
+  } | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Clear AI verdict when leaving compare mode
+  useEffect(() => {
+    if (!compareMode) {
+      setAiVerdict(null);
+      setAnalysisError(null);
+    }
+  }, [compareMode]);
+
+  const handleRunAiDetection = async () => {
+    const map1 = beforeMapRef.current;
+    const map2 = afterMapRef.current;
+    if (!map1 || !map2) {
+      setAnalysisError('Comparison maps are not initialized yet.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+
+    try {
+      let bbox: [number, number, number, number] | null = null;
+      if (selectedTileId) {
+        let feature = gridTiles?.features?.find((f) => f.properties?.tile_id === selectedTileId);
+        if (!feature) {
+          const source = map1.getSource('efi-grid') as any;
+          if (source?._data?.features) {
+            feature = source._data.features.find((f: any) => f.properties?.tile_id === selectedTileId);
+          }
+        }
+        if (!feature) {
+          const queried = map1.querySourceFeatures('efi-grid', { filter: ['==', 'tile_id', selectedTileId] });
+          if (queried && queried.length > 0) feature = queried[0] as any;
+        }
+        if (feature?.geometry) {
+          bbox = getFeatureBBox(feature.geometry);
+        }
+      }
+
+      // If tile selected and outside view or too small, zoom to it at high resolution (zoom 15.2)
+      if (bbox) {
+        const [minLng, minLat, maxLng, maxLat] = bbox;
+        const centerLng = (minLng + maxLng) / 2;
+        const centerLat = (minLat + maxLat) / 2;
+        const inView = map1.getBounds().contains([centerLng, centerLat]);
+        if (!inView || map1.getZoom() < 14.5) {
+          await new Promise<void>((resolve) => {
+            const onMoveEnd = () => {
+              map1.off('moveend', onMoveEnd);
+              resolve();
+            };
+            map1.on('moveend', onMoveEnd);
+            map1.flyTo({ center: [centerLng, centerLat], zoom: 15.2, duration: 400 });
+            setTimeout(() => {
+              map1.off('moveend', onMoveEnd);
+              resolve();
+            }, 1000);
+          });
+        }
+      }
+
+      // Wait until all high-res satellite tiles have finished downloading and rendering
+      const waitForTiles = (map: maplibregl.Map, timeoutMs = 2500) => {
+        return new Promise<void>((resolve) => {
+          if (map.areTilesLoaded()) {
+            resolve();
+            return;
+          }
+          let finished = false;
+          const onIdle = () => {
+            if (!finished) {
+              finished = true;
+              map.off('idle', onIdle);
+              resolve();
+            }
+          };
+          map.on('idle', onIdle);
+          setTimeout(() => {
+            if (!finished) {
+              finished = true;
+              map.off('idle', onIdle);
+              resolve();
+            }
+          }, timeoutMs);
+        });
+      };
+      await Promise.all([waitForTiles(map1), waitForTiles(map2)]);
+
+      // Temporarily hide all vector/grid/boundary/label overlays so snapshots capture PURE satellite imagery
+      const OVERLAY_LAYERS = [
+        'efi-grid-fill',
+        'efi-grid-line',
+        'efi-grid-selected',
+        'efi-belagavi-boundary-line',
+        'efi-belagavi-boundary-glow',
+        'before-labels-tiles',
+        'after-labels-tiles',
+        'osm-tiles',
+        'efi-events-fill',
+        'efi-events-outline',
+      ];
+
+      const restoreLayers1: string[] = [];
+      const restoreLayers2: string[] = [];
+      OVERLAY_LAYERS.forEach((id) => {
+        if (map1.getLayer(id)) {
+          const vis = map1.getLayoutProperty(id, 'visibility');
+          if (vis !== 'none') {
+            restoreLayers1.push(id);
+            map1.setLayoutProperty(id, 'visibility', 'none');
+          }
+        }
+        if (map2.getLayer(id)) {
+          const vis = map2.getLayoutProperty(id, 'visibility');
+          if (vis !== 'none') {
+            restoreLayers2.push(id);
+            map2.setLayoutProperty(id, 'visibility', 'none');
+          }
+        }
+      });
+
+      // Force MapLibre to paint a clean frame with raw satellite tiles
+      map1.triggerRepaint();
+      map2.triggerRepaint();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      // Snapshot the clean satellite crops
+      const beforeImg = captureMapCrop(map1, bbox);
+      const afterImg = captureMapCrop(map2, bbox);
+
+      // Immediately restore overlays so interactive map UI remains functional
+      restoreLayers1.forEach((id) => map1.setLayoutProperty(id, 'visibility', 'visible'));
+      restoreLayers2.forEach((id) => map2.setLayoutProperty(id, 'visibility', 'visible'));
+      map1.triggerRepaint();
+      map2.triggerRepaint();
+
+      if (!beforeImg || !afterImg) {
+        throw new Error('Failed to capture snapshot from satellite canvas.');
+      }
+
+      const res = await api.post('/ml/predict-pair', {
+        before_image: beforeImg,
+        after_image: afterImg,
+        tile_id: selectedTileId ?? undefined,
+        threshold: 0.50,
+      });
+
+      setAiVerdict({
+        ...res.data,
+        beforeImg,
+        afterImg,
+      });
+    } catch (err: any) {
+      console.error('Siamese AI Detection error:', err);
+      setAnalysisError(err?.message || 'Error executing AI change detection model.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   useEffect(() => {
     const q = searchQuery.trim();
@@ -228,6 +420,7 @@ export function EFIMap({
 
     const map = new maplibregl.Map({
       container: singleMapContainer.current,
+      preserveDrawingBuffer: true,
       fadeDuration: 0,
       maxTileCacheSize: 150,
       style: {
@@ -430,6 +623,7 @@ export function EFIMap({
 
     const map1 = new maplibregl.Map({
       container: beforeContainer.current,
+      preserveDrawingBuffer: true,
       fadeDuration: 0,
       maxTileCacheSize: 150,
       style: {
@@ -450,6 +644,7 @@ export function EFIMap({
 
     const map2 = new maplibregl.Map({
       container: afterContainer.current,
+      preserveDrawingBuffer: true,
       fadeDuration: 0,
       maxTileCacheSize: 150,
       style: {
@@ -537,12 +732,14 @@ export function EFIMap({
       if (map1.getSource('before-ee-src')) map1.removeSource('before-ee-src');
 
       if (beforeTileUrl) {
-        const isWaybackBefore = Boolean(beforeTileUrl.includes('arcgisonline.com'));
+        const isHighResBefore = Boolean(
+          beforeTileUrl.includes('arcgis.com') || beforeTileUrl.includes('arcgisonline.com')
+        );
         map1.addSource('before-ee-src', {
           type: 'raster',
           tiles: [beforeTileUrl],
           tileSize: 256,
-          maxzoom: isWaybackBefore ? 18 : 14,
+          maxzoom: isHighResBefore ? 18 : 14,
           attribution: beforeAttribution,
         });
         const firstOver1 = map1.getLayer('efi-belagavi-boundary-glow')
@@ -577,12 +774,14 @@ export function EFIMap({
       if (map2.getSource('after-ee-src')) map2.removeSource('after-ee-src');
 
       if (afterTileUrl) {
-        const isWaybackAfter = Boolean(afterTileUrl.includes('arcgisonline.com'));
+        const isHighResAfter = Boolean(
+          afterTileUrl.includes('arcgis.com') || afterTileUrl.includes('arcgisonline.com')
+        );
         map2.addSource('after-ee-src', {
           type: 'raster',
           tiles: [afterTileUrl],
           tileSize: 256,
-          maxzoom: isWaybackAfter ? 18 : 14,
+          maxzoom: isHighResAfter ? 18 : 14,
           attribution: afterAttribution,
         });
         const firstOver2 = map2.getLayer('efi-belagavi-boundary-glow')
@@ -777,6 +976,248 @@ export function EFIMap({
         </div>
       </div>
 
+      {/* Compare Mode AI Change Detection Toolbar */}
+      {compareMode && (
+        <div className="compare-ai-toolbar" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="compare-ai-meta">
+            <div className="compare-ai-chip">
+              <Sparkles size={13} className="sparkle-icon" />
+              <span>Siamese ResNet-18</span>
+            </div>
+            {selectedTileId ? (
+              <div className="compare-ai-selection-badge">
+                <span className="dot dot-amber" />
+                <span>Parcel: <strong>{selectedTileId}</strong> (1×1 km)</span>
+                <button
+                  type="button"
+                  className="compare-ai-deselect-btn"
+                  onClick={() => onTileSelect?.('')}
+                  title="Clear parcel selection (switch to viewport mode)"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="compare-ai-hint">
+                <Grid3x3 size={12} />
+                <span>Click any 1×1 km cell on either map, or analyze current viewport</span>
+              </div>
+            )}
+          </div>
+
+          <div className="compare-ai-buttons">
+            {selectedTileId && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm compare-focus-btn"
+                onClick={() => {
+                  const map = beforeMapRef.current;
+                  if (!map) return;
+                  let feature = gridTiles?.features?.find((f) => f.properties?.tile_id === selectedTileId);
+                  if (!feature) {
+                    const source = map.getSource('efi-grid') as any;
+                    if (source?._data?.features) {
+                      feature = source._data.features.find((f: any) => f.properties?.tile_id === selectedTileId);
+                    }
+                  }
+                  if (feature?.geometry) {
+                    const bbox = getFeatureBBox(feature.geometry);
+                    if (bbox) {
+                      map.flyTo({
+                        center: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2],
+                        zoom: 14.5,
+                        duration: 700,
+                      });
+                    }
+                  }
+                }}
+                title="Focus on selected 1km parcel"
+              >
+                <Crosshair size={13} />
+                <span>Focus Parcel</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn-ai-analyze"
+              onClick={handleRunAiDetection}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? (
+                <>
+                  <RefreshCw size={13} className="spin" />
+                  <span>Analyzing with Siamese ResNet-18…</span>
+                </>
+              ) : (
+                <>
+                  <Zap size={14} />
+                  <span>
+                    {selectedTileId ? 'Detect Land Changes (Selected Cell)' : 'Detect Land Changes (Viewport)'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* AI Error Notification */}
+      {analysisError && (
+        <div className="compare-ai-error" onMouseDown={(e) => e.stopPropagation()}>
+          <AlertCircle size={14} />
+          <span>{analysisError}</span>
+          <button type="button" onClick={() => setAnalysisError(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* AI Verdict Modal Overlay */}
+      {aiVerdict && (
+        <div className="ai-verdict-overlay" onClick={() => setAiVerdict(null)}>
+          <div className="ai-verdict-card" onClick={(e) => e.stopPropagation()}>
+            <div className="ai-verdict-header">
+              <div className="ai-verdict-title">
+                <BrainCircuit size={18} style={{ color: '#22d3ee' }} />
+                <span>Siamese Neural Network Land Change Verdict</span>
+              </div>
+              <button
+                type="button"
+                className="ai-verdict-close"
+                onClick={() => setAiVerdict(null)}
+                aria-label="Close verdict"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Verdict Status Banner */}
+            <div className={`ai-verdict-status-banner ${aiVerdict.is_changed ? 'status-changed' : 'status-unchanged'}`}>
+              <div className="status-badge-icon">
+                {aiVerdict.is_changed ? (
+                  <AlertCircle size={28} style={{ color: '#ef4444' }} />
+                ) : (
+                  <CheckCircle2 size={28} style={{ color: '#10b981' }} />
+                )}
+              </div>
+              <div className="status-badge-text">
+                <div className="status-main-label">
+                  {aiVerdict.is_changed ? 'LAND CHANGE DETECTED' : 'NO SIGNIFICANT CHANGE DETECTED'}
+                </div>
+                <div className="status-sub-label">
+                  {aiVerdict.is_changed
+                    ? `Change Probability: ${(aiVerdict.change_probability * 100).toFixed(1)}% · Severity: ${aiVerdict.severity}`
+                    : `Confidence: ${(aiVerdict.confidence * 100).toFixed(1)}% · Consistent Natural Surface`}
+                </div>
+                {aiVerdict.analysis_note && (
+                  <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>
+                    {aiVerdict.analysis_note}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Side-by-Side Snapshot Comparison Thumbnails */}
+            <div className="ai-verdict-images-grid">
+              <div className="ai-thumb-col">
+                <div className="ai-thumb-tag before-tag">
+                  <span className="dot" style={{ background: '#3b82f6' }} />
+                  BEFORE MAP SNAPSHOT
+                </div>
+                <div className="ai-thumb-wrapper">
+                  <img src={aiVerdict.beforeImg} alt="Before Map Crop" className="ai-thumb-img" />
+                </div>
+                <div className="ai-thumb-date">{beforeLabel}</div>
+              </div>
+
+              <div className="ai-thumb-vs">
+                <span>VS</span>
+              </div>
+
+              <div className="ai-thumb-col">
+                <div className="ai-thumb-tag after-tag">
+                  <span className="dot" style={{ background: '#f59e0b' }} />
+                  AFTER MAP SNAPSHOT
+                </div>
+                <div className="ai-thumb-wrapper">
+                  <img src={aiVerdict.afterImg} alt="After Map Crop" className="ai-thumb-img" />
+                </div>
+                <div className="ai-thumb-date">{afterLabel}</div>
+              </div>
+            </div>
+
+            {/* Metrics Breakdown */}
+            <div className="ai-verdict-meta-grid">
+              <div className="meta-item">
+                <span className="meta-key">Target Parcel</span>
+                <span className="meta-val">{aiVerdict.tile_id || 'Viewport Center (1 km equiv.)'}</span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-key">Deep Architecture</span>
+                <span className="meta-val">Siamese ResNet-18 (512-d Differencing)</span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-key">Calibrated Change Prob</span>
+                <span
+                  className="meta-val"
+                  style={{
+                    color: aiVerdict.is_changed ? '#ef4444' : '#10b981',
+                    fontWeight: 700,
+                  }}
+                >
+                  {(aiVerdict.change_probability * 100).toFixed(2)}%
+                </span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-key">Risk / Severity</span>
+                <span
+                  className="meta-val"
+                  style={{
+                    color: aiVerdict.severity === 'HIGH' ? '#ef4444' : aiVerdict.severity === 'MODERATE' ? '#f59e0b' : '#10b981',
+                    fontWeight: 700,
+                  }}
+                >
+                  {aiVerdict.severity}
+                </span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-key">Edge Structural Corr (Sobel)</span>
+                <span className="meta-val" style={{ color: (aiVerdict.edge_correlation ?? 1) >= 0.55 ? '#10b981' : '#f59e0b' }}>
+                  {aiVerdict.edge_correlation !== undefined ? `${(aiVerdict.edge_correlation * 100).toFixed(1)}%` : 'N/A'}
+                </span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-key">Deep Feature Similarity</span>
+                <span className="meta-val" style={{ color: (aiVerdict.deep_similarity ?? 1) >= 0.90 ? '#10b981' : '#f59e0b' }}>
+                  {aiVerdict.deep_similarity !== undefined ? `${(aiVerdict.deep_similarity * 100).toFixed(1)}%` : 'N/A'}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="ai-verdict-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setAiVerdict(null)}
+              >
+                Dismiss
+              </button>
+              <button
+                type="button"
+                className="btn-ai-analyze"
+                onClick={handleRunAiDetection}
+                disabled={isAnalyzing}
+              >
+                <RefreshCw size={13} className={isAnalyzing ? 'spin' : ''} style={{ marginRight: 6 }} />
+                <span>Re-Analyze Area</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Bottom HUD with live location context */}
       <div className="map-bottom-hud" onMouseDown={(e) => e.stopPropagation()}>
         <MapPin size={11} style={{ color: '#a855f7' }} />
@@ -838,6 +1279,92 @@ function searchZoom(props: PhotonProperties): number {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function getFeatureBBox(geometry: any): [number, number, number, number] | null {
+  if (!geometry || !geometry.coordinates) return null;
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+
+  function scan(coords: any) {
+    if (!coords) return;
+    if (typeof coords[0] === 'number') {
+      const [lng, lat] = coords;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    } else if (Array.isArray(coords)) {
+      coords.forEach(scan);
+    }
+  }
+
+  scan(geometry.coordinates);
+  if (!isFinite(minLng) || !isFinite(minLat) || !isFinite(maxLng) || !isFinite(maxLat)) return null;
+  return [minLng, minLat, maxLng, maxLat];
+}
+
+function captureMapCrop(
+  map: maplibregl.Map,
+  bbox?: [number, number, number, number] | null,
+  outputSize: number = 448,
+): string | null {
+  const canvas = map.getCanvas();
+  if (!canvas) return null;
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = outputSize;
+  offscreen.height = outputSize;
+  const ctx = offscreen.getContext('2d');
+  if (!ctx) return null;
+
+  const scaleX = canvas.width / canvas.clientWidth;
+  const scaleY = canvas.height / canvas.clientHeight;
+
+  let sx = 0;
+  let sy = 0;
+  let sw = canvas.width;
+  let sh = canvas.height;
+
+  if (bbox && bbox.length === 4) {
+    const [minLng, minLat, maxLng, maxLat] = bbox;
+    const p1 = map.project([minLng, maxLat]); // Top-left in CSS px
+    const p2 = map.project([maxLng, minLat]); // Bottom-right in CSS px
+
+    const cssX = Math.min(p1.x, p2.x);
+    const cssY = Math.min(p1.y, p2.y);
+    const cssW = Math.abs(p2.x - p1.x);
+    const cssH = Math.abs(p2.y - p1.y);
+
+    if (cssW > 10 && cssH > 10) {
+      sx = Math.max(0, cssX * scaleX);
+      sy = Math.max(0, cssY * scaleY);
+      sw = Math.min(canvas.width - sx, cssW * scaleX);
+      sh = Math.min(canvas.height - sy, cssH * scaleY);
+    } else {
+      const size = Math.min(canvas.width, canvas.height) * 0.7;
+      sx = (canvas.width - size) / 2;
+      sy = (canvas.height - size) / 2;
+      sw = size;
+      sh = size;
+    }
+  } else {
+    const size = Math.min(canvas.width, canvas.height) * 0.7;
+    sx = (canvas.width - size) / 2;
+    sy = (canvas.height - size) / 2;
+    sw = size;
+    sh = size;
+  }
+
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, outputSize, outputSize);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, outputSize, outputSize);
+
+  return offscreen.toDataURL('image/png');
+}
+
 function renderGridLayers(
   map: maplibregl.Map,
   tiles: GridTileCollection | null,
@@ -858,6 +1385,7 @@ function renderGridLayers(
     map.off('mousemove', previousHandlers.move);
     gridHandlersByMap.delete(map);
   }
+  if (map.getLayer('efi-grid-selected')) map.removeLayer('efi-grid-selected');
   if (map.getLayer(fillLayer)) map.removeLayer(fillLayer);
   if (map.getLayer(lineLayer)) map.removeLayer(lineLayer);
   if (map.getSource(sourceId)) map.removeSource(sourceId);
@@ -921,10 +1449,10 @@ function renderGridLayers(
       id: fillLayer,
       type: 'fill',
       source: sourceId,
-      minzoom: 11.5,
+      minzoom: 9.0,
       paint: {
         'fill-color': '#06b6d4',
-        'fill-opacity': ['case', ['==', ['get', 'tile_id'], selectedId], 0.25, 0.02],
+        'fill-opacity': 0.01, // Click-target without obstructing satellite imagery
       },
     },
     beforeLayer,
@@ -935,25 +1463,44 @@ function renderGridLayers(
       id: lineLayer,
       type: 'line',
       source: sourceId,
-      minzoom: 11.5,
+      minzoom: 9.0,
       paint: {
-        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#22d3ee', 'rgba(6,182,212,0.65)'],
+        'line-color': ['case', ['==', ['get', 'tile_id'], selectedId], '#f59e0b', 'rgba(6,182,212,0.60)'],
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
-          11.5, 0.5,
-          13, 0.9,
-          15, 1.5,
+          9.0, 0.4,
+          11.0, 0.8,
+          13.0, 1.4,
+          15.0, 2.2,
         ],
         'line-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          11.4, 0,
-          11.8, 0.45,
-          13, 0.85,
+          9.0, 0.30,
+          11.0, 0.55,
+          13.0, 0.85,
         ],
       },
     },
     beforeLayer,
   );
+
+  // Dedicated high-contrast border for selected 1km parcel
+  if (selectedId) {
+    map.addLayer(
+      {
+        id: 'efi-grid-selected',
+        type: 'line',
+        source: sourceId,
+        filter: ['==', ['get', 'tile_id'], selectedId],
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 3,
+          'line-opacity': 1.0,
+        },
+      },
+      beforeLayer,
+    );
+  }
 
   const click = (event: maplibregl.MapMouseEvent) => {
     if (
@@ -964,7 +1511,9 @@ function renderGridLayers(
     }
     const tileId = map.queryRenderedFeatures(event.point, { layers: [fillLayer] })[0]
       ?.properties?.tile_id;
-    if (typeof tileId === 'string') onTileSelect?.(tileId);
+    if (typeof tileId === 'string') {
+      onTileSelect?.(tileId === selectedId ? '' : tileId);
+    }
   };
   const move = (event: maplibregl.MapMouseEvent) => {
     const overGrid =

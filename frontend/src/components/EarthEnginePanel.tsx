@@ -142,7 +142,7 @@ export function EarthEnginePanel({
   const [beforeDate, setBeforeDate] = useState('2020-02-15');
   const [afterDate, setAfterDate] = useState(todayIso);
   const [compareVis, setCompareVis] = useState<EELayer>('true_color');
-  const [highResImagery, setHighResImagery] = useState(true);
+  const [highResImagery, setHighResImagery] = useState(false);
 
   // Scene selection must follow the visible map area, otherwise a low-cloud scene
   // that only clips the AOI edge can leave the comparison pane transparent.
@@ -667,12 +667,14 @@ export function EarthEnginePanel({
               )}
               {compareData.metrics.excavation_signal && (
                 <div className="ee-signal-tag excavation">
-                  ⚠️ Ground disturbance / excavation increase detected
+                  <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+                  Ground disturbance / excavation increase detected
                 </div>
               )}
               {compareData.metrics.vegetation_loss_signal && (
                 <div className="ee-signal-tag loss">
-                  ⚠️ Vegetation clearing detected
+                  <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+                  Vegetation clearing detected
                 </div>
               )}
               {highResImagery && (

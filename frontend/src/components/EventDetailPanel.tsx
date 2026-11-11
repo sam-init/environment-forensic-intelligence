@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 import type { ForensicEvent } from '../types/api';
 import { RiskBadge } from './RiskBadge';
 import { EventStatusBadge } from './EventStatusBadge';
@@ -48,8 +48,9 @@ export function EventDetailPanel({ event, onClose, onReview }: EventDetailPanelP
         </div>
 
         {event.is_demo && (
-          <div className="eyebrow" style={{ color: 'var(--color-demo)', marginBottom: 'var(--space-2)' }}>
-            ⚠ DEMO DATA — Not a real incident
+          <div className="eyebrow" style={{ color: 'var(--color-demo)', marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <AlertTriangle size={12} />
+            DEMO DATA — Not a real incident
           </div>
         )}
 

@@ -7,12 +7,12 @@ echo ===================================================
 cd /d "%~dp0"
 
 echo [1/2] Starting Backend (FastAPI + Google Earth Engine)...
-start "EFI Backend (Port 8000)" cmd /k "cd /d %~dp0backend && .venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "EFI Backend (Port 8000)" /D "%~dp0backend" cmd /k ".venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 timeout /t 2 /nobreak >nul
 
 echo [2/2] Starting Frontend (Vite + React)...
-start "EFI Frontend (Port 5173)" cmd /k "cd /d %~dp0frontend && npm run dev"
+start "EFI Frontend (Port 5173)" /D "%~dp0frontend" cmd /k "npm run dev"
 
 echo ===================================================
 echo Both servers are launching!

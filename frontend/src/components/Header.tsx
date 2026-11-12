@@ -37,7 +37,7 @@ export function Header() {
           <div className="header-wordmark">
             EFI Platform
           </div>
-          <div className="header-subtext">India · Earth Observation</div>
+          <div className="header-subtext">Environmental Forensic Intelligence</div>
         </NavLink>
 
         <div className="header-divider" aria-hidden="true" />
@@ -82,16 +82,17 @@ export function Header() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                fontSize: 10,
-                color: 'var(--color-success)',
-                background: 'rgba(48, 209, 88, 0.07)',
-                border: '1px solid rgba(48, 209, 88, 0.15)',
+                fontSize: 11,
+                color: 'var(--color-accent)',
+                background: 'rgba(134, 239, 172, 0.08)',
+                border: '1px solid rgba(134, 239, 172, 0.25)',
                 borderRadius: 'var(--radius-sm)',
                 padding: '3px 8px',
+                fontWeight: 500,
               }}
-              title="Google Earth Engine is connected"
+              title="Google Earth Engine is connected (Sentinel-2 10m)"
             >
-              <Satellite size={10} aria-hidden="true" />
+              <Satellite size={11} aria-hidden="true" />
               GEE Live
             </div>
           )}

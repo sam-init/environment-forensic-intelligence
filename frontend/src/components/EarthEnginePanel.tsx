@@ -62,14 +62,14 @@ const LAYER_META: Record<EELayer, { label: string; icon: React.ReactNode; desc: 
   high_res_imagery: {
     label: 'High-Resolution Imagery',
     icon: <Satellite size={13} />,
-    desc: 'Sub-meter (30cm) — sharp street & building level inspection',
-    color: '#a855f7',
+    desc: 'Sub-meter (30cm) — sharp terrain & reach inspection',
+    color: 'var(--color-accent)',
   },
   true_color: {
     label: 'True Colour',
     icon: <Satellite size={13} />,
-    desc: 'Sentinel-2 (10m) — live 5-day updates for recent environmental changes',
-    color: '#3b82f6',
+    desc: 'Sentinel-2 (10m) — live 5-day updates for environmental changes',
+    color: 'var(--color-accent)',
   },
   ndvi: {
     label: 'NDVI',
@@ -305,7 +305,7 @@ export function EarthEnginePanel({
     <div className="ee-panel">
       {/* Header */}
       <div className="ee-panel-header">
-        <Satellite size={14} style={{ color: '#3b82f6' }} />
+        <Satellite size={14} style={{ color: 'var(--color-accent)' }} />
         <span className="ee-panel-title">Earth Engine</span>
         {overviewLoading || compareLoading ? (
           <div className="loading-spinner" style={{ width: 10, height: 10, borderWidth: 1, marginLeft: 'auto' }} />
@@ -393,7 +393,7 @@ export function EarthEnginePanel({
           {activeLayer === 'high_res_imagery' && (
             <div className="ee-highres-card">
               <div className="ee-highres-header">
-                <MapPin size={12} style={{ color: '#a855f7' }} />
+                <MapPin size={12} style={{ color: 'var(--color-accent)' }} />
                 <span>AREA & ADMINISTRATIVE DETAILS</span>
               </div>
               <div className="ee-admin-rows">
@@ -487,10 +487,10 @@ export function EarthEnginePanel({
           {/* Date Pickers */}
           <div className="ee-date-block">
             <label className="ee-date-label">
-              <span className="dot" style={{ background: '#3b82f6' }} /> BEFORE DATE (Baseline)
+              <span className="dot" style={{ background: 'var(--color-accent)' }} /> BEFORE DATE (Baseline)
             </label>
             <div className="ee-date-input-wrap">
-              <Calendar size={12} style={{ color: '#3b82f6' }} />
+              <Calendar size={12} style={{ color: 'var(--color-accent)' }} />
               <input
                 type="date"
                 className="ee-date-input"
@@ -617,7 +617,7 @@ export function EarthEnginePanel({
           {highResImagery && (
             <div className="ee-compare-admin-box">
               <div className="ee-compare-admin-title">
-                <MapPin size={11} style={{ color: '#a855f7' }} />
+                <MapPin size={11} style={{ color: 'var(--color-accent)' }} />
                 <span>{locationInfo.area} · {locationInfo.district} · {locationInfo.state}</span>
               </div>
               <label className="ee-labels-mini-toggle">

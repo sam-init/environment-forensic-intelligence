@@ -97,7 +97,7 @@ export function SitesPage() {
               </div>
 
               <div className="site-card-meta" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <MapPin size={11} style={{ color: '#06b6d4', flexShrink: 0 }} />
+                <MapPin size={11} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
                 <span>
                   {site.area_name || 'Belagavi District'}
                   {site.latitude && site.longitude ? ` · ${site.latitude.toFixed(4)}°N, ${site.longitude.toFixed(4)}°E` : ''}
@@ -116,16 +116,16 @@ export function SitesPage() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 10px',
-                background: 'rgba(6, 182, 212, 0.08)',
-                border: '1px solid rgba(6, 182, 212, 0.2)',
+                background: 'rgba(134, 239, 172, 0.08)',
+                border: '1px solid rgba(134, 239, 172, 0.22)',
                 borderRadius: 6,
                 fontSize: 11,
-                color: '#22d3ee',
+                color: 'var(--color-text-primary)',
                 margin: '8px 0',
               }}>
-                <Clock size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <Clock size={12} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
                 <span>
-                  Duration: <strong>{site.monitoring_duration_months || 3} Months</strong>
+                  Surveillance Duration: <strong>{site.monitoring_duration_months || 3} Months</strong>
                   {site.monitoring_end_date ? ` · Active until ${new Date(site.monitoring_end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
                 </span>
               </div>

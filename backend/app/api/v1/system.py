@@ -75,16 +75,26 @@ async def system_status(
     settings = get_settings()
 
     if db is None:
+        from app.api.v1.events import _get_demo_events_serialized
+        from app.services.site_store import load_sites
+
+        events = _get_demo_events_serialized()
+        active_events = [e for e in events if e.status not in ("false_positive", "closed")]
+        crit = sum(1 for e in active_events if (e.risk_score or 0) >= 75)
+        hi = sum(1 for e in active_events if 50 <= (e.risk_score or 0) < 75)
+        mod = sum(1 for e in active_events if 25 <= (e.risk_score or 0) < 50)
+
+        all_sites = load_sites()
         return {
             "demo_mode": settings.demo_mode,
             "copernicus_available": settings.copernicus_available,
             "earth_engine_available": is_ee_available(),
             "active_signals": {
-                "critical": 1,
-                "high": 1,
-                "moderate": 1,
+                "critical": crit,
+                "high": hi,
+                "moderate": mod,
             },
-            "sites_monitored": 3,
+            "sites_monitored": len(all_sites),
             "timestamp": datetime.utcnow().isoformat(),
         }
 

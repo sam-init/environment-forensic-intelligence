@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
 
     # ── CORS ─────────────────────────────────────────────────────
-    cors_origins: list[str] = [
+    cors_origins: list[str] | str = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",

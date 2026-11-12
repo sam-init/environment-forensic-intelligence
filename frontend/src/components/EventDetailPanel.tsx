@@ -182,19 +182,93 @@ export function EventDetailPanel({ event, onClose, onReview }: EventDetailPanelP
         {/* Analyst review */}
         {onReview && (
           <div className="event-detail-section">
-            <div className="event-detail-section-title">Analyst Action</div>
-            <div className="review-actions">
-              <button className="btn btn-secondary btn-block" onClick={() => onReview('under_review')}>
-                Mark Under Review
+            <div className="event-detail-section-title">Analyst Determination & Review</div>
+
+            {event.status === 'false_positive' && (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: 'var(--color-text-primary)',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: 'var(--space-3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0 }} />
+                <div>
+                  <strong>Marked as False Positive</strong>
+                  <div style={{ color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                    Active disturbance boundary and highlight have been removed from the satellite map.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="review-actions" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                className={`btn ${event.status === 'under_review' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => onReview('under_review')}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span>Mark Under Review</span>
+                {event.status === 'under_review' && (
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>
+                    ● Current
+                  </span>
+                )}
               </button>
-              <button className="btn btn-secondary btn-block" onClick={() => onReview('confirmed_disturbance')}>
-                Confirm Disturbance
+
+              <button
+                className={`btn ${event.status === 'confirmed_disturbance' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => onReview('confirmed_disturbance')}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span>Confirm Disturbance</span>
+                {event.status === 'confirmed_disturbance' && (
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>
+                    ● Current
+                  </span>
+                )}
               </button>
-              <button className="btn btn-secondary btn-block" onClick={() => onReview('requires_field_verification')}>
-                Requires Field Verification
+
+              <button
+                className={`btn ${event.status === 'requires_field_verification' ? 'btn-primary' : 'btn-secondary'} btn-block`}
+                onClick={() => onReview('requires_field_verification')}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span>Requires Field Verification</span>
+                {event.status === 'requires_field_verification' && (
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>
+                    ● Current
+                  </span>
+                )}
               </button>
-              <button className="btn btn-danger btn-block" onClick={() => onReview('false_positive')}>
-                Mark as False Positive
+
+              <button
+                className={`btn btn-block`}
+                onClick={() => onReview('false_positive')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: event.status === 'false_positive' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#fca5a5',
+                }}
+              >
+                <span>Mark as False Positive</span>
+                {event.status === 'false_positive' ? (
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>
+                    ✓ Marking Cleared
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '10px', opacity: 0.7 }}>Removes Map Marking</span>
+                )}
               </button>
             </div>
           </div>

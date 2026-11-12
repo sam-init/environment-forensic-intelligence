@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import {
   Search,
@@ -6,7 +6,7 @@ import {
   MapPin,
   Tag,
   Grid3x3,
-  Sparkles,
+  Layers,
   Zap,
   Crosshair,
   BrainCircuit,
@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   FileText,
   Building2,
+  SquareDashed,
+  Plus,
 } from 'lucide-react';
 import type { ForensicEvent, GridTileCollection, ForensicReport } from '../types/api';
 import type { EELayer } from './EarthEnginePanel';
@@ -52,6 +54,14 @@ interface EFIMapProps {
   onToggleLabels?: (show: boolean) => void;
   showGrid?: boolean;
   onToggleGrid?: (show: boolean) => void;
+  // Site monitoring additions
+  onAreaSelected?: (area: {
+    bbox: [number, number, number, number];
+    geometry: any;
+    areaHa: number;
+    center: [number, number];
+  }) => void;
+  onSendGridToMonitoring?: (tileId: string) => void;
 }
 
 type PhotonProperties = {
@@ -139,7 +149,10 @@ export function EFIMap({
   showGrid,
   onToggleGrid,
   onLayerChange,
+  onAreaSelected,
+  onSendGridToMonitoring,
 }: EFIMapProps) {
+  const [isSelectingArea, setIsSelectingArea] = useState(false);
   const [internalShowLabels, setInternalShowLabels] = useState(false);
   const effectiveShowLabels = showLabels !== undefined ? showLabels : internalShowLabels;
   const handleToggleLabels = (next: boolean) => {
@@ -668,6 +681,143 @@ export function EFIMap({
   }, [compareMode, gridTiles, selectedTileId, singleMapReady, effectiveShowGrid, activeLayer, eeTileUrl, onTileSelect]);
 
   // ─────────────────────────────────────────────────────────────────────────────
+  //  Area Selection Tool (Click & drag on map to select monitoring area)
+  // ─────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (compareMode) return;
+    const map = singleMapRef.current;
+    if (!map || !singleMapReady) return;
+
+    const sourceId = 'efi-area-selection';
+
+    if (!isSelectingArea) {
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      if (map.getSource(sourceId)) {
+        if (map.getLayer('efi-area-selection-fill')) map.removeLayer('efi-area-selection-fill');
+        if (map.getLayer('efi-area-selection-line')) map.removeLayer('efi-area-selection-line');
+        map.removeSource(sourceId);
+      }
+      return;
+    }
+
+    map.dragPan.disable();
+    map.getCanvas().style.cursor = 'crosshair';
+
+    if (!map.getSource(sourceId)) {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'efi-area-selection-fill',
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': '#86efac',
+          'fill-opacity': 0.18,
+        },
+      });
+      map.addLayer({
+        id: 'efi-area-selection-line',
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#86efac',
+          'line-width': 2,
+          'line-dasharray': [3, 2],
+        },
+      });
+    }
+
+    let startPoint: [number, number] | null = null;
+
+    const onMouseDown = (e: maplibregl.MapMouseEvent) => {
+      startPoint = [e.lngLat.lng, e.lngLat.lat];
+    };
+
+    const onMouseMove = (e: maplibregl.MapMouseEvent) => {
+      if (!startPoint) return;
+      const current = [e.lngLat.lng, e.lngLat.lat];
+      const minLng = Math.min(startPoint[0], current[0]);
+      const maxLng = Math.max(startPoint[0], current[0]);
+      const minLat = Math.min(startPoint[1], current[1]);
+      const maxLat = Math.max(startPoint[1], current[1]);
+
+      const poly = {
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [
+            [
+              [minLng, minLat],
+              [maxLng, minLat],
+              [maxLng, maxLat],
+              [minLng, maxLat],
+              [minLng, minLat],
+            ],
+          ],
+        },
+        properties: {},
+      };
+      const src = map.getSource(sourceId) as maplibregl.GeoJSONSource;
+      if (src) src.setData({ type: 'FeatureCollection', features: [poly] });
+    };
+
+    const onMouseUp = (e: maplibregl.MapMouseEvent) => {
+      if (!startPoint) return;
+      const end = [e.lngLat.lng, e.lngLat.lat];
+      const minLng = Math.min(startPoint[0], end[0]);
+      const maxLng = Math.max(startPoint[0], end[0]);
+      const minLat = Math.min(startPoint[1], end[1]);
+      const maxLat = Math.max(startPoint[1], end[1]);
+
+      if (maxLng - minLng > 0.0004 && maxLat - minLat > 0.0004) {
+        const midLat = (minLat + maxLat) / 2;
+        const widthM = (maxLng - minLng) * 111320 * Math.cos((midLat * Math.PI) / 180);
+        const heightM = (maxLat - minLat) * 111320;
+        const areaHa = Math.max(0.1, (widthM * heightM) / 10000);
+        const centerCoords: [number, number] = [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+
+        const geometry = {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [minLng, minLat],
+              [maxLng, minLat],
+              [maxLng, maxLat],
+              [minLng, maxLat],
+              [minLng, minLat],
+            ],
+          ],
+        };
+
+        onAreaSelected?.({
+          bbox: [minLng, minLat, maxLng, maxLat],
+          geometry,
+          areaHa,
+          center: centerCoords,
+        });
+
+        setIsSelectingArea(false);
+      }
+      startPoint = null;
+    };
+
+    map.on('mousedown', onMouseDown);
+    map.on('mousemove', onMouseMove);
+    map.on('mouseup', onMouseUp);
+
+    return () => {
+      map.off('mousedown', onMouseDown);
+      map.off('mousemove', onMouseMove);
+      map.off('mouseup', onMouseUp);
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+    };
+  }, [isSelectingArea, compareMode, singleMapReady, onAreaSelected]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
   //  2. Initialize Compare Dual Maps (when in compareMode)
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1019,6 +1169,34 @@ export function EFIMap({
             <span>{effectiveShowGrid ? '1km Grid: ON' : '1km Grid: OFF'}</span>
           </button>
 
+          {/* Area of Interest Selection Tool */}
+          {!compareMode && (
+            <button
+              type="button"
+              className={`map-labels-toggle-btn ${isSelectingArea ? 'active' : ''}`}
+              onClick={() => setIsSelectingArea((prev) => !prev)}
+              title="Click and drag on the map to select an area to send to continuous site monitoring"
+              aria-label="Select Area to Monitor"
+            >
+              <SquareDashed size={11} />
+              <span>{isSelectingArea ? 'Drawing Area…' : 'Select Area to Monitor'}</span>
+            </button>
+          )}
+
+          {/* If 1x1 grid cell selected, quick action to monitor it */}
+          {selectedTileId && onSendGridToMonitoring && (
+            <button
+              type="button"
+              className="map-labels-toggle-btn active"
+              onClick={() => onSendGridToMonitoring(selectedTileId)}
+              title={`Send selected 1×1 km grid cell (${selectedTileId}) to site monitoring`}
+              aria-label="Send 1x1 Grid Cell to Site Monitoring"
+            >
+              <Plus size={11} />
+              <span>Monitor Grid <strong>{selectedTileId}</strong></span>
+            </button>
+          )}
+
           {activeLayer === 'true_color' && currentZoom >= 15 && onLayerChange && (
             <button
               type="button"
@@ -1027,7 +1205,7 @@ export function EFIMap({
               title="Sentinel-2 10m physical limit reached. Click to switch to sub-meter (30cm) High-Resolution Imagery"
               aria-label="Switch to High-Resolution Imagery"
             >
-              <Sparkles size={11} />
+              <Layers size={11} />
               <span>30cm High-Res</span>
             </button>
           )}
@@ -1039,19 +1217,35 @@ export function EFIMap({
               title="Viewing sub-meter commercial imagery. Click to switch back to live 5-day Sentinel-2 True Colour"
               aria-label="Switch to True Colour"
             >
-              <Sparkles size={11} />
+              <Layers size={11} />
               <span>30cm Active (Switch to Live)</span>
             </button>
           )}
         </div>
       </div>
 
+      {/* Area selection banner */}
+      {isSelectingArea && (
+        <div className="area-select-banner" onMouseDown={(e) => e.stopPropagation()}>
+          <SquareDashed size={14} style={{ color: 'var(--color-accent)' }} />
+          <span>Click and drag on the map to select any area to send to site monitoring</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setIsSelectingArea(false)}
+            style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--color-text-secondary)' }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Compare Mode AI Change Detection Toolbar */}
       {compareMode && (
         <div className="compare-ai-toolbar" onMouseDown={(e) => e.stopPropagation()}>
           <div className="compare-ai-meta">
             <div className="compare-ai-chip">
-              <Sparkles size={13} className="sparkle-icon" />
+              <Layers size={13} style={{ color: 'var(--color-accent)' }} />
               <span>Siamese ResNet-18</span>
             </div>
             {selectedTileId ? (
@@ -1663,7 +1857,7 @@ function renderEventLayers(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const features = events
-    .filter((e) => e.geometry)
+    .filter((e) => e.geometry && e.status !== 'false_positive')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((e) => ({
       type: 'Feature' as const,
@@ -1733,7 +1927,9 @@ function renderEventLayers(
     });
   }
 
-  events.forEach((event) => {
+  events
+    .filter((event) => event.status !== 'false_positive')
+    .forEach((event) => {
     const level = event.risk_level ?? scoreToRiskLevel(event.risk_score);
     const color = getRiskColor(level);
 

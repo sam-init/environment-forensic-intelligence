@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Grid3x3, MapPin, RefreshCw, X } from 'lucide-react';
+import { Grid3x3, MapPin, RefreshCw, X, Plus } from 'lucide-react';
 import { api } from '../utils/api';
 import type { GridGenerateResponse, GridTileCollection } from '../types/api';
 
@@ -16,6 +16,7 @@ interface GridPanelProps {
   onFocus: () => void;
   selectedTileId: string | null;
   onClearSelection: () => void;
+  onSendToMonitoring?: (tileId: string) => void;
 }
 
 export function GridPanel({
@@ -23,6 +24,7 @@ export function GridPanel({
   onFocus,
   selectedTileId,
   onClearSelection,
+  onSendToMonitoring,
 }: GridPanelProps) {
   const [summary, setSummary] = useState<GridGenerateResponse | null>(null);
 
@@ -69,8 +71,8 @@ export function GridPanel({
   return (
     <div className="grid-panel">
       <div className="ee-panel-header">
-        <Grid3x3 size={14} style={{ color: '#22d3ee' }} />
-        <span className="ee-panel-title">Grid Analysis</span>
+        <Grid3x3 size={14} style={{ color: 'var(--color-accent)' }} />
+        <span className="ee-panel-title">1 km Review Grid</span>
         <button
           className="btn btn-ghost"
           style={{ marginLeft: 'auto', padding: '2px 4px' }}
@@ -84,13 +86,13 @@ export function GridPanel({
 
       <div className="ee-layer-label">TARGET REGION</div>
       <div className="grid-region">
-        <MapPin size={12} style={{ color: '#22d3ee' }} />
+        <MapPin size={12} style={{ color: 'var(--color-accent)' }} />
         <span>Belagavi, Karnataka</span>
       </div>
 
       <div className="grid-meta-row">
         <span>Cell size</span>
-        <strong>1 × 1 km</strong>
+        <strong>1 × 1 km (100 ha)</strong>
       </div>
       <div className="grid-meta-row">
         <span>Tiles stored</span>
@@ -130,14 +132,30 @@ export function GridPanel({
       )}
 
       {selectedTileId && (
-        <div className="grid-selected">
-          <div>
-            <span className="grid-selected-label">SELECTED CELL</span>
-            <div className="grid-selected-id">{selectedTileId}</div>
+        <div className="grid-selected" style={{ padding: '10px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 6 }}>
+            <div>
+              <span className="grid-selected-label">SELECTED 1×1 KM CELL</span>
+              <div className="grid-selected-id" style={{ fontSize: '13px', fontWeight: 600 }}>{selectedTileId}</div>
+            </div>
+            <button className="btn btn-ghost" onClick={onClearSelection} title="Clear selection" style={{ padding: 2 }}>
+              <X size={12} />
+            </button>
           </div>
-          <button className="btn btn-ghost" onClick={onClearSelection} title="Clear selection">
-            <X size={12} />
-          </button>
+          <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+            Extent: 1.0 km × 1.0 km (100 ha)
+          </div>
+          {onSendToMonitoring && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => onSendToMonitoring(selectedTileId)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderColor: 'rgba(134, 239, 172, 0.3)', color: 'var(--color-text-primary)' }}
+            >
+              <Plus size={13} style={{ color: 'var(--color-accent)' }} />
+              <span>Send Cell to Site Monitoring</span>
+            </button>
+          )}
         </div>
       )}
 

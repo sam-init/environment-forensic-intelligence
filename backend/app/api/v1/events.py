@@ -19,15 +19,22 @@ from app.schemas import (
     EventReviewUpdate,
 )
 from app.services.demo_data import DEMO_EVENTS
+from app.services.event_store import load_event_reviews, save_event_review, get_event_review
 
 router = APIRouter(prefix="/events", tags=["Events"])
 
 
 def _get_demo_events_serialized() -> list[EventResponse]:
-    """Return synthetic demo events for offline fallback mode."""
+    """Return synthetic demo events for offline fallback mode, with persistent reviews applied."""
     now = datetime.utcnow()
+    reviews = load_event_reviews()
     res = []
     for de in DEMO_EVENTS:
+        event_id = de["event_id"]
+        # Apply persistent review status if previously reviewed
+        review = reviews.get(event_id)
+        current_status = review["status"] if review else "unreviewed"
+
         # Build standard GeoJSON polygon from WKT
         # DEMO_EVENTS contains geometry_wkt
         # e.g. "MULTIPOLYGON(((76.3920 15.2750, 76.3950 15.2750, ...)))"
@@ -47,7 +54,7 @@ def _get_demo_events_serialized() -> list[EventResponse]:
                 event_id=de["event_id"],
                 site_id=f"demo-site-{de['site_index']+1}",
                 category=de["category"],
-                status="unreviewed",
+                status=current_status,
                 first_observed=now,
                 last_observed=now,
                 observation_count=de["observation_count"],
@@ -146,13 +153,18 @@ async def review_event(
     db: Annotated[AsyncSession | None, Depends(get_db)],
 ) -> EventResponse:
     """Submit an analyst review for a forensic event."""
+    # Always persist review in local storage for instant offline/hybrid persistence
+    save_event_review(event_id, payload.status, payload.reviewer, payload.notes)
+
     if db is None:
         demo_events = _get_demo_events_serialized()
-        target = demo_events[0]
+        target = None
         for de in demo_events:
             if de.event_id == event_id or de.id == event_id:
                 target = de
                 break
+        if target is None:
+            target = demo_events[0]
         target.status = payload.status
         return target
 
